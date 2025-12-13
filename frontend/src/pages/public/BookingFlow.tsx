@@ -222,7 +222,8 @@ export default function BookingFlow() {
   const [step, setStep] = useState<Step>('service')
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedStaff, setSelectedStaff] = useState<StaffProvider | null>(null)
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
+  const [_selectedTime, setSelectedTime] = useState<string | null>(null)
   const [notes] = useState('')
   const [currentMonth, setCurrentMonth] = useState(new Date())
 
@@ -324,17 +325,27 @@ export default function BookingFlow() {
     enabled: !!branch?.id && !!selectedService?.id,
   })
 
-  // Obtener disponibilidad del día
+  // Calcular el inicio de la semana para cargar disponibilidad
+  const weekStartDate = useMemo(() => {
+    if (!selectedDate) return null
+    const date = new Date(selectedDate)
+    const dayOfWeek = date.getDay()
+    const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+    date.setDate(date.getDate() + diff)
+    return format(date, 'yyyy-MM-dd')
+  }, [selectedDate])
+
+  // Obtener disponibilidad de la semana completa
   const { data: availability, isLoading: loadingSlots } = useQuery({
-    queryKey: ['availability', branch?.id, selectedService?.id, selectedDate, selectedStaff?.id],
+    queryKey: ['weekAvailability', branch?.id, selectedService?.id, weekStartDate, selectedStaff?.id],
     queryFn: () =>
-      servicesApi.getAvailability(
+      servicesApi.getWeekAvailability(
         branch!.id,
         selectedService!.id,
-        format(selectedDate!, 'yyyy-MM-dd'),
+        weekStartDate!,
         selectedStaff?.id
       ),
-    enabled: !!branch?.id && !!selectedService?.id && !!selectedDate,
+    enabled: !!branch?.id && !!selectedService?.id && !!weekStartDate,
   })
 
   // Mutation: Iniciar reserva
@@ -468,7 +479,8 @@ export default function BookingFlow() {
   const handleSelectService = (service: Service) => {
     setSelectedService(service)
     setSelectedStaff(null)
-    setSelectedDate(null)
+    setSelectedDate(new Date()) // Inicializar con fecha de hoy para cargar disponibilidad
+    setSelectedTime(null)
     setStep('staff')
   }
 
@@ -1365,9 +1377,110 @@ export default function BookingFlow() {
               <div className="flex justify-center py-12">
                 <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
               </div>
+            ) : selectedService ? (
+              /* ========== FLUJO DE RESERVA POR PASOS - WIZARD DESKTOP ========== */
+              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                {/* Servicio seleccionado - Header fijo */}
+                <div className="p-5 border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-lg">{selectedService.name}</p>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span className="inline-flex items-center gap-1.5 text-sm text-gray-500 bg-white px-3 py-1 rounded-full border border-gray-100">
+                          <Icons.Clock />
+                          {selectedService.duration_minutes} min
+                        </span>
+                        <span className="text-lg font-bold text-gray-900">S/ {selectedService.price}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setSelectedService(null)
+                        setSelectedStaff(null)
+                        setSelectedDate(null)
+                        setSelectedTime(null)
+                        setStep('staff')
+                        setClientLookupDone(false)
+                        setIsExistingClient(false)
+                      }}
+                      className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Progress Steps - Indicador de pasos */}
+                <div className="px-5 py-4 border-b border-gray-100 bg-white">
+                  <div className="flex items-center justify-between max-w-md mx-auto">
+                    {[
+                      { key: 'staff', label: 'Profesional', icon: <Icons.User /> },
+                      { key: 'datetime', label: 'Fecha y Hora', icon: <Icons.Clock /> },
+                      { key: 'client', label: 'Tus Datos', icon: <Icons.Document /> },
+                    ].map((s, idx) => {
+                      const steps: Step[] = ['staff', 'datetime', 'client', 'otp']
+                      const currentIdx = steps.indexOf(step)
+                      const stepIdx = steps.indexOf(s.key as Step)
+                      const isActive = step === s.key || (step === 'otp' && s.key === 'client')
+                      const isCompleted = stepIdx < currentIdx
+
+                      return (
+                        <div key={s.key} className="flex items-center">
+                          <button
+                            onClick={() => {
+                              if (isCompleted) {
+                                setStep(s.key as Step)
+                                if (stepIdx < 2) {
+                                  setClientLookupDone(false)
+                                  setIsExistingClient(false)
+                                }
+                              }
+                            }}
+                            disabled={!isCompleted && !isActive}
+                            className={`flex flex-col items-center gap-2 ${isCompleted ? 'cursor-pointer' : ''}`}
+                          >
+                            <div
+                              className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 ${
+                                isActive
+                                  ? 'bg-gray-900 text-white shadow-lg'
+                                  : isCompleted
+                                  ? 'bg-green-500 text-white shadow-md'
+                                  : 'bg-gray-100 text-gray-400'
+                              }`}
+                              style={isActive ? { backgroundColor: 'var(--brand-secondary)' } : {}}
+                            >
+                              {isCompleted ? <Icons.Check /> : s.icon}
+                            </div>
+                            <span className={`text-xs font-medium ${isActive ? 'text-gray-900' : isCompleted ? 'text-green-600' : 'text-gray-400'}`}>
+                              {s.label}
+                            </span>
+                          </button>
+                          {idx < 2 && (
+                            <div className={`w-16 h-0.5 mx-2 rounded-full transition-colors ${isCompleted ? 'bg-green-400' : 'bg-gray-200'}`} />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Error */}
+                {error && (
+                  <div className="mx-5 mt-4 p-4 bg-red-50 rounded-xl border border-red-100">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
+                )}
+
+                {/* Contenido del paso actual */}
+                <div className="p-5">
+                  {renderDesktopBookingStep()}
+                </div>
+              </div>
             ) : (
               <div className="space-y-3">
-                {/* Agrupar servicios por género y luego por categoría - Acordeones estilo Planity */}
+                {/* ========== LISTA DE SERVICIOS - ACORDEONES ========== */}
                 {(() => {
                   // Primero agrupar por género
                   const servicesByGender = services?.reduce((acc, service) => {
@@ -1382,16 +1495,17 @@ export default function BookingFlow() {
                   const sortedGenders = genderOrder.filter(g => servicesByGender[g]?.length > 0)
 
                   return sortedGenders.map((gender) => {
-                    const genderServices = servicesByGender[gender]
+                    const genderServices: Service[] = servicesByGender[gender] || []
                     const genderInfo = GENDER_LABELS[gender] || { title: 'Otros', icon: null }
 
                     // Agrupar por categoría dentro de cada género
-                    const categorizedServices = genderServices.reduce((acc, service) => {
+                    type CategoryMap = { [key: string]: Service[] }
+                    const categorizedServices: CategoryMap = {}
+                    for (const service of genderServices) {
                       const category = service.category_name || 'Otros servicios'
-                      if (!acc[category]) acc[category] = []
-                      acc[category].push(service)
-                      return acc
-                    }, {} as Record<string, Service[]>)
+                      if (!categorizedServices[category]) categorizedServices[category] = []
+                      categorizedServices[category].push(service)
+                    }
 
                     return (
                       <div key={gender} className="space-y-2">
@@ -1409,10 +1523,12 @@ export default function BookingFlow() {
                         </div>
 
                         {/* Categorías como Acordeones - estilo Planity */}
-                        {Object.entries(categorizedServices).map(([categoryName, categoryServices]) => {
+                        {Object.keys(categorizedServices).map((categoryName: string) => {
+                          const catServicesArray = categorizedServices[categoryName]
                           const categoryKey = `${gender}-${categoryName}`
                           const isExpanded = expandedCategories.has(categoryKey)
-                          const hasSelectedService = categoryServices.some(s => s.id === selectedService?.id)
+                          // En este bloque selectedService es siempre null, así que hasSelectedService siempre será false
+                          const hasSelectedService = false
 
                           return (
                             <div key={categoryName} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -1428,7 +1544,7 @@ export default function BookingFlow() {
                                     {categoryName}
                                   </h3>
                                   <span className="text-sm text-gray-400">
-                                    {categoryServices.length} {categoryServices.length === 1 ? 'servicio' : 'servicios'}
+                                    {catServicesArray.length} {catServicesArray.length === 1 ? 'servicio' : 'servicios'}
                                   </span>
                                   {hasSelectedService && !isExpanded && (
                                     <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
@@ -1453,9 +1569,10 @@ export default function BookingFlow() {
                                 isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
                               }`}>
                                 <div className="border-t border-gray-100">
-                                  {categoryServices.map((service, serviceIdx) => {
-                                    const isSelected = selectedService?.id === service.id
-                                    const isLastItem = serviceIdx === categoryServices.length - 1
+                                  {catServicesArray.map((service, serviceIdx) => {
+                                    // En este bloque selectedService es siempre null, así que isSelected siempre será false
+                                    const isSelected = false
+                                    const isLastItem = serviceIdx === catServicesArray.length - 1
 
                                     return (
                                       <button
@@ -1534,139 +1651,9 @@ export default function BookingFlow() {
             )}
           </div>
 
-          {/* Columna derecha: Flujo de reserva (panel lateral) - Estilo Planity - OCULTO en móvil */}
+          {/* Columna derecha: Solo Reseñas y Horarios - Estilo Planity */}
           <div className="hidden lg:block lg:col-span-1">
             <div className="sticky top-20">
-              {/* Panel de reserva */}
-              <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-lg">
-                {/* Header del panel con gradiente */}
-                <div
-                  className="px-6 py-5 text-white relative overflow-hidden"
-                  style={{ background: `linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%)` }}
-                >
-                  <div className="relative z-10">
-                    <h3 className="font-bold text-lg">Tu reserva</h3>
-                    {selectedService && (
-                      <p className="text-sm text-white/80 mt-1 flex items-center gap-1.5">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                        </svg>
-                        {branch.name}
-                      </p>
-                    )}
-                  </div>
-                  {/* Decoración de fondo */}
-                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full" />
-                  <div className="absolute -right-2 -bottom-8 w-16 h-16 bg-white/5 rounded-full" />
-                </div>
-
-                {/* Contenido del panel */}
-                <div className="p-6">
-                  {!selectedService ? (
-                    <div className="text-center py-10">
-                      <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center mx-auto mb-5 shadow-inner">
-                        <svg className="w-10 h-10 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                      </div>
-                      <p className="text-gray-400 text-sm font-medium">
-                        Selecciona un servicio
-                      </p>
-                      <p className="text-gray-400 text-xs mt-1">
-                        para comenzar tu reserva
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-5">
-                      {/* Servicio seleccionado - estilo card */}
-                      <div className="p-4 bg-gradient-to-br from-gray-50 to-white rounded-xl border border-gray-100">
-                        <div className="flex justify-between items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-gray-900 text-sm leading-tight">{selectedService.name}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-white px-2 py-0.5 rounded border border-gray-100">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {selectedService.duration_minutes} min
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-gray-900">S/ {selectedService.price}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Progress Steps - estilo Planity minimalista */}
-                      <div className="flex items-center justify-between py-3 px-2">
-                        {[
-                          { key: 'staff', label: 'Profesional', icon: <Icons.User /> },
-                          { key: 'datetime', label: 'Fecha', icon: <Icons.Clock /> },
-                          { key: 'client', label: 'Datos', icon: <Icons.Document /> },
-                        ].map((s, idx) => {
-                          const steps: Step[] = ['staff', 'datetime', 'client', 'otp']
-                          const currentIdx = steps.indexOf(step)
-                          const stepIdx = steps.indexOf(s.key as Step)
-                          const isActive = step === s.key
-                          const isCompleted = stepIdx < currentIdx
-
-                          return (
-                            <div key={s.key} className="flex items-center">
-                              <button
-                                onClick={() => {
-                                  if (isCompleted) {
-                                    setStep(s.key as Step)
-                                    if (stepIdx < 2) {
-                                      setClientLookupDone(false)
-                                      setIsExistingClient(false)
-                                    }
-                                  }
-                                }}
-                                disabled={!isCompleted && !isActive}
-                                className={`flex flex-col items-center gap-1.5 ${
-                                  isCompleted ? 'cursor-pointer' : ''
-                                }`}
-                              >
-                                <div
-                                  className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 ${
-                                    isActive
-                                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
-                                      : isCompleted
-                                      ? 'bg-green-500 text-white shadow-md shadow-green-100'
-                                      : 'bg-gray-100 text-gray-400'
-                                  }`}
-                                  style={isActive ? { backgroundColor: 'var(--brand-secondary)' } : {}}
-                                >
-                                  {isCompleted ? <Icons.Check /> : s.icon}
-                                </div>
-                                <span className={`text-[10px] font-medium ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
-                                  {s.label}
-                                </span>
-                              </button>
-                              {idx < 2 && (
-                                <div className={`w-6 h-0.5 mx-0.5 rounded-full transition-colors ${isCompleted ? 'bg-green-400' : 'bg-gray-200'}`} />
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-
-                      {/* Error */}
-                      {error && (
-                        <div className="p-3 bg-red-50 rounded-lg border border-red-100">
-                          <p className="text-sm text-red-700">{error}</p>
-                        </div>
-                      )}
-
-                      {/* Contenido dinámico según el step */}
-                      {renderBookingStep()}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               {/* Sección de Reseñas con Tabs - Estilo Planity */}
               {reviewsData && reviewsData.total_reviews > 0 && (
                 <div className="mt-6 bg-white rounded-2xl border border-gray-100 overflow-hidden">
@@ -2047,7 +2034,225 @@ export default function BookingFlow() {
     </div>
   )
 
-  // Función para renderizar el paso actual del booking
+  // Función para renderizar el paso actual del booking en DESKTOP (wizard por pasos)
+  function renderDesktopBookingStep() {
+    // Step: Profesional
+    if (step === 'staff') {
+      if (loadingServiceDetail) {
+        return (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        )
+      }
+
+      return (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Elige un profesional</h3>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* Opción: Sin preferencia */}
+            <button
+              onClick={() => {
+                setSelectedStaff(null)
+                setStep('datetime')
+              }}
+              className="flex flex-col items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all"
+            >
+              <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center">
+                <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-900">Sin preferencia</p>
+                <p className="text-xs text-gray-500">Primer disponible</p>
+              </div>
+            </button>
+
+            {/* Profesionales disponibles */}
+            {serviceDetail?.staff_providers?.map((provider: StaffProvider) => (
+              <button
+                key={provider.id}
+                onClick={() => {
+                  setSelectedStaff(provider)
+                  setStep('datetime')
+                }}
+                className="flex flex-col items-center gap-3 p-4 rounded-xl border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all"
+              >
+                <div className="w-14 h-14 rounded-full bg-gray-900 flex items-center justify-center text-white font-medium overflow-hidden">
+                  {provider.photo ? (
+                    <img src={provider.photo} alt={provider.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-lg">{provider.name?.charAt(0)}</span>
+                  )}
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-900">{formatStaffName(provider.name)}</p>
+                  {provider.bio && <p className="text-xs text-gray-500 line-clamp-1">{provider.bio}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    // Step: Fecha y Hora
+    if (step === 'datetime') {
+      // Calcular los 7 días de la semana actual
+      const baseDate = selectedDate || new Date()
+      const weekStart = new Date(baseDate)
+      const dayOfWeek = weekStart.getDay()
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+      weekStart.setDate(weekStart.getDate() + diff)
+
+      const weekDays = Array.from({ length: 7 }, (_, i) => {
+        const day = new Date(weekStart)
+        day.setDate(weekStart.getDate() + i)
+        return day
+      })
+
+      // Agrupar slots por fecha
+      const slotsByDate: Record<string, AvailabilitySlot[]> = {}
+      availability?.slots?.forEach((slot: AvailabilitySlot) => {
+        const dateKey = slot.datetime.split('T')[0]
+        if (!slotsByDate[dateKey]) slotsByDate[dateKey] = []
+        const timeStr = slot.datetime.split('T')[1]?.slice(0, 5)
+        const existing = slotsByDate[dateKey].find(s => s.datetime.split('T')[1]?.slice(0, 5) === timeStr)
+        if (!existing) {
+          slotsByDate[dateKey].push(slot)
+        }
+      })
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const canGoPrev = weekStart > today
+
+      return (
+        <div className="space-y-4">
+          {/* Info del profesional seleccionado */}
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Elige fecha y hora</h3>
+            {selectedStaff && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full">
+                {selectedStaff.photo ? (
+                  <img src={selectedStaff.photo} alt={selectedStaff.name} className="w-6 h-6 rounded-full object-cover" />
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium">
+                    {selectedStaff.name.charAt(0)}
+                  </div>
+                )}
+                <span className="text-sm text-gray-700">con {formatStaffName(selectedStaff.name)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Navegación de semana */}
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                if (canGoPrev) {
+                  const newDate = new Date(weekStart)
+                  newDate.setDate(newDate.getDate() - 7)
+                  setSelectedDate(newDate)
+                }
+              }}
+              disabled={!canGoPrev}
+              className={`p-2 rounded-lg transition-colors ${canGoPrev ? 'hover:bg-gray-100 text-gray-600' : 'text-gray-300 cursor-not-allowed'}`}
+            >
+              <Icons.ChevronLeft />
+            </button>
+            <span className="text-sm font-medium text-gray-900 capitalize">
+              {format(weekStart, "MMMM yyyy", { locale: es })}
+            </span>
+            <button
+              onClick={() => {
+                const newDate = new Date(weekStart)
+                newDate.setDate(newDate.getDate() + 7)
+                setSelectedDate(newDate)
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
+            >
+              <Icons.ChevronRight />
+            </button>
+          </div>
+
+          {/* Grid de días con horarios en columnas */}
+          {loadingSlots ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-2">
+              {weekDays.map((day, idx) => {
+                const dateKey = format(day, 'yyyy-MM-dd')
+                const daySlots = slotsByDate[dateKey] || []
+                const isPast = day < today
+                const dayIsToday = format(day, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
+
+                return (
+                  <div key={idx} className="flex flex-col">
+                    {/* Header del día */}
+                    <div className={`text-center py-2 mb-2 rounded-lg ${dayIsToday ? 'bg-gray-900 text-white' : isPast ? 'text-gray-300' : ''}`}>
+                      <p className="text-xs font-medium uppercase">
+                        {format(day, 'EEE', { locale: es })}
+                      </p>
+                      <p className="text-lg font-bold">
+                        {format(day, 'd')}
+                      </p>
+                    </div>
+
+                    {/* Horarios del día */}
+                    <div className="flex flex-col gap-1.5 max-h-[280px] overflow-y-auto">
+                      {isPast ? (
+                        <p className="text-xs text-gray-300 text-center py-4">-</p>
+                      ) : daySlots.length > 0 ? (
+                        daySlots.map((slot) => {
+                          const timeStr = slot.datetime.split('T')[1]?.slice(0, 5) || ''
+                          return (
+                            <button
+                              key={slot.datetime}
+                              onClick={() => handleSelectSlot(slot)}
+                              className="py-2.5 px-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-900 hover:text-white transition-all"
+                            >
+                              {timeStr}
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <p className="text-xs text-gray-400 text-center py-4">-</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Botón volver */}
+          <div className="pt-4 border-t border-gray-100">
+            <button
+              onClick={() => setStep('staff')}
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <Icons.ChevronLeft />
+              Cambiar profesional
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    // Step: Datos del Cliente - reutilizar renderBookingStep
+    if (step === 'client' || step === 'otp') {
+      return renderBookingStep()
+    }
+
+    return null
+  }
+
+  // Función para renderizar el paso actual del booking (MÓVIL)
   function renderBookingStep() {
     // Step: Profesional
     if (step === 'staff') {

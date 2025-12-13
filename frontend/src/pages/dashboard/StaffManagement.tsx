@@ -33,6 +33,8 @@ interface Staff {
     message: string
   }
   has_schedule: boolean
+  trial_days_remaining: number | null
+  is_billable: boolean
 }
 
 interface LookupResult {
@@ -750,9 +752,7 @@ export default function StaffManagement() {
       ])
 
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'staff'] })
-      // Mostrar feedback temporal
-      setErrors({ success: 'Datos guardados correctamente' })
-      setTimeout(() => setErrors({}), 2000)
+      closeModal()
     } catch (error: any) {
       const message = error.response?.data?.error || 'Error al guardar'
       setErrors({ general: message })
@@ -918,6 +918,19 @@ export default function StaffManagement() {
                               {staff.is_active ? 'Activo' : 'Inactivo'}
                             </span>
                           </div>
+
+                          {/* Badge de trial */}
+                          {staff.trial_days_remaining !== null && !staff.is_billable && (
+                            <div className={`mt-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              staff.trial_days_remaining <= 3
+                                ? 'bg-orange-100 text-orange-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {staff.trial_days_remaining <= 0
+                                ? 'Trial vencido'
+                                : `${staff.trial_days_remaining} dias de trial`}
+                            </div>
+                          )}
 
                           {/* Estado de disponibilidad */}
                           {!staff.is_available && staff.availability_status && (

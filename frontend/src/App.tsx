@@ -24,14 +24,14 @@ import Profile from '@/pages/client/Profile'
 
 // Paginas de dashboard
 import DashboardHome from '@/pages/dashboard/DashboardHome'
-import CalendarView from '@/pages/dashboard/CalendarView'
+import AppointmentsPage from '@/pages/dashboard/AppointmentsPage'
 import QRCodeGenerator from '@/pages/dashboard/QRCodeGenerator'
 import Onboarding from '@/pages/dashboard/Onboarding'
 import ServicesManagement from '@/pages/dashboard/ServicesManagement'
 import StaffManagement from '@/pages/dashboard/StaffManagement'
-import AppointmentsList from '@/pages/dashboard/AppointmentsList'
 import BranchesManagement from '@/pages/dashboard/BranchesManagement'
 import BusinessSettings from '@/pages/dashboard/BusinessSettings'
+import Subscription from '@/pages/dashboard/Subscription'
 
 // Componente de ruta protegida
 function ProtectedRoute({
@@ -89,13 +89,13 @@ function App() {
       >
         <Route path="/dashboard" element={<DashboardHome />} />
         <Route path="/dashboard/onboarding" element={<Onboarding />} />
-        <Route path="/dashboard/calendario" element={<CalendarView />} />
-        <Route path="/dashboard/citas" element={<AppointmentsList />} />
+        <Route path="/dashboard/citas" element={<AppointmentsPage />} />
         <Route path="/dashboard/servicios" element={<ServicesManagement />} />
         <Route path="/dashboard/equipo" element={<StaffManagement />} />
         <Route path="/dashboard/qr" element={<QRCodeGenerator />} />
         <Route path="/dashboard/sucursales" element={<BranchesManagement />} />
         <Route path="/dashboard/configuracion" element={<BusinessSettings />} />
+        <Route path="/dashboard/suscripcion" element={<Subscription />} />
       </Route>
 
       {/* Rutas públicas (AL FINAL porque /:businessSlug es genérica) */}

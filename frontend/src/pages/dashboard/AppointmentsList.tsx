@@ -31,7 +31,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   no_show: { label: 'No asistio', color: 'bg-orange-100 text-orange-800' },
 }
 
-export default function AppointmentsList() {
+export default function AppointmentsListContent() {
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
@@ -83,27 +83,20 @@ export default function AppointmentsList() {
 
   return (
     <div>
-      {/* Header y filtros */}
-      <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Citas</h2>
-          <p className="text-sm text-gray-500">Gestiona las citas de tu negocio</p>
-        </div>
-
-        <div className="flex gap-2">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">Todos los estados</option>
-            {Object.entries(statusConfig).map(([value, { label }]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
+      {/* Filtros */}
+      <div className="flex flex-wrap justify-end items-center gap-4 mb-4">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white text-sm"
+        >
+          <option value="">Todos los estados</option>
+          {Object.entries(statusConfig).map(([value, { label }]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Lista de citas */}

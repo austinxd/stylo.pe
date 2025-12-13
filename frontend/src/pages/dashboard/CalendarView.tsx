@@ -47,7 +47,7 @@ interface Appointment {
 
 type ViewMode = 'day' | 'month'
 
-export default function CalendarView() {
+export default function CalendarViewContent() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedBranch, setSelectedBranch] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('day')

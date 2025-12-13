@@ -82,6 +82,8 @@ class DashboardStaffSerializer(serializers.ModelSerializer):
     is_available = serializers.BooleanField(source='is_available_for_booking', read_only=True)
     availability_status = serializers.DictField(read_only=True)
     has_schedule = serializers.SerializerMethodField()
+    trial_days_remaining = serializers.SerializerMethodField()
+    is_billable = serializers.SerializerMethodField()
 
     class Meta:
         model = StaffMember
@@ -90,7 +92,8 @@ class DashboardStaffSerializer(serializers.ModelSerializer):
             'document_type', 'document_number', 'photo', 'specialty',
             'branch_ids', 'branches_info', 'is_active', 'calendar_color',
             'services_count', 'services_count_by_branch', 'appointments_today',
-            'is_available', 'availability_status', 'has_schedule'
+            'is_available', 'availability_status', 'has_schedule',
+            'trial_days_remaining', 'is_billable'
         ]
 
     def get_branches_info(self, obj):
@@ -123,6 +126,36 @@ class DashboardStaffSerializer(serializers.ModelSerializer):
 
     def get_has_schedule(self, obj):
         return obj.work_schedules.filter(is_working=True).exists()
+
+    def get_trial_days_remaining(self, obj):
+        """Obtiene los días de trial restantes para este profesional."""
+        if not obj.current_business:
+            return None
+        try:
+            from apps.subscriptions.models import StaffSubscription
+            staff_sub = StaffSubscription.objects.get(
+                staff=obj,
+                business=obj.current_business,
+                is_active=True
+            )
+            return staff_sub.trial_days_remaining
+        except StaffSubscription.DoesNotExist:
+            return None
+
+    def get_is_billable(self, obj):
+        """Indica si el profesional ya es facturable."""
+        if not obj.current_business:
+            return False
+        try:
+            from apps.subscriptions.models import StaffSubscription
+            staff_sub = StaffSubscription.objects.get(
+                staff=obj,
+                business=obj.current_business,
+                is_active=True
+            )
+            return staff_sub.is_billable
+        except StaffSubscription.DoesNotExist:
+            return False
 
 
 class DashboardAppointmentSerializer(serializers.ModelSerializer):

@@ -16,6 +16,7 @@ urlpatterns = [
     path('api/v1/branches/', include('apps.scheduling.urls')),
     path('api/v1/appointments/', include('apps.appointments.urls')),
     path('api/v1/dashboard/', include('apps.dashboard.urls')),
+    path('api/v1/', include('apps.subscriptions.urls')),
 
     # Reseñas con token (público, sin autenticación)
     path('api/v1/reviews/token/<str:token>/', ReviewWithTokenView.as_view(), name='review-with-token'),

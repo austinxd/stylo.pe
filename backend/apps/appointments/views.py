@@ -23,6 +23,7 @@ from .serializers import (
 from apps.core.models import Branch
 from apps.accounts.models import Client, BookingSession
 from apps.services.models import Service, StaffService
+from apps.subscriptions.services import SubscriptionService
 
 
 class PublicBookingViewSet(viewsets.ViewSet):
@@ -53,6 +54,15 @@ class PublicBookingViewSet(viewsets.ViewSet):
         service = data['service']
         staff = data['staff']
 
+        # Verificar que el negocio puede recibir reservas (suscripción activa)
+        branch = Branch.objects.select_related('business').get(pk=data['branch_id'])
+        can_book, error_msg = SubscriptionService.can_receive_bookings(branch.business)
+        if not can_book:
+            return Response(
+                {'error': error_msg or 'Este negocio no puede recibir reservas en este momento.'},
+                status=status.HTTP_402_PAYMENT_REQUIRED
+            )
+
         # Obtener precio del profesional para este servicio
         try:
             staff_service = StaffService.objects.get(staff=staff, service=service)
@@ -76,8 +86,6 @@ class PublicBookingViewSet(viewsets.ViewSet):
             status='PENDING',
             expires_at=timezone.now() + timedelta(minutes=15)
         )
-
-        branch = Branch.objects.select_related('business').get(pk=data['branch_id'])
 
         return Response({
             'session_token': session.session_token,

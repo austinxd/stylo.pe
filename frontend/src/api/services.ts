@@ -106,6 +106,45 @@ export const servicesApi = {
     const response = await apiClient.get(`/branches/${branchId}/availability/month?${params}`)
     return response.data
   },
+
+  /**
+   * Obtiene la disponibilidad de una semana (7 días).
+   */
+  getWeekAvailability: async (
+    branchId: number,
+    serviceId: number,
+    startDate: string,
+    staffId?: number
+  ): Promise<{ slots: AvailabilitySlot[] }> => {
+    // Cargar disponibilidad de 7 días en paralelo
+    const dates = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(startDate)
+      date.setDate(date.getDate() + i)
+      return date.toISOString().split('T')[0]
+    })
+
+    const results = await Promise.all(
+      dates.map(async (date) => {
+        try {
+          const params = new URLSearchParams({
+            service_id: serviceId.toString(),
+            date,
+          })
+          if (staffId) {
+            params.append('staff_id', staffId.toString())
+          }
+          const response = await apiClient.get(`/branches/${branchId}/availability?${params}`)
+          return response.data.slots || []
+        } catch {
+          return []
+        }
+      })
+    )
+
+    // Combinar todos los slots
+    const allSlots = results.flat()
+    return { slots: allSlots }
+  },
 }
 
 export default servicesApi
