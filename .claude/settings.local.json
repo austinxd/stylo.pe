@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(mysql -u root -pleonel123 -e \"DROP DATABASE IF EXISTS backend_stylo; CREATE DATABASE backend_stylo CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\":*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(python manage.py makemigrations:*)",
+      "Bash(python manage.py:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill -9)",
+      "Bash(npm run build:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.development python:*)",
+      "Bash(python3:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1MjM0ODg3LCJpYXQiOjE3NjUyMzEyODcsImp0aSI6ImNmNTk1OGU4MWEwZDQwMDZiMjY2ZWVkMWVlOGIxMjM0IiwidXNlcl9pZCI6IjIifQ.NVvh4moI_XLvIUQyyy5fJ7GXKmrxV7mzCvFmbqZKrHQ\" curl -s http://localhost:8000/api/v1/dashboard/services/ -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1MjM4NjYwLCJpYXQiOjE3NjUyMzUwNjAsImp0aSI6ImQyMTNiOGEyNTk0YzQzMWRiNTc3YmZlNzg4OTdmOTZjIiwidXNlcl9pZCI6IjIifQ.p9VaHn_ToILcozGc0j-wkcseacksfbEPwW4t7860Clk\")",
+      "Bash(npm install:*)",
+      "WebFetch(domain:www.planity.com)",
+      "WebSearch",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1NDAyNDI4LCJpYXQiOjE3NjUzOTg4MjgsImp0aSI6IjFhMDRiNDZjZjBkNjQ3NTJiNzYwZGFjMDI3OTY1NDQxIiwidXNlcl9pZCI6IjIifQ.Csq3-YgLX8GJMrEzy0WcPv3V83lyujnHaEHI0KnoLjk\")",
+      "Bash(python -c:*)",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.development source venv/bin/activate:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1NDY2MzUzLCJpYXQiOjE3NjU0NjI3NTMsImp0aSI6ImZhOWI3MzJiMzMyMTQwYmM5MGE3NDllMTRjYmE4ZDE1IiwidXNlcl9pZCI6IjIifQ.MGNVU9VzKYvkSSH35KwI7fDQEL9gAEdDnUz0wQXWAZs\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1NDY2NjUyLCJpYXQiOjE3NjU0NjMwNTIsImp0aSI6ImY3NzY4Y2VhNGM3YjRkYmQ5MzU1NGJhNTFjYTU2NDA3IiwidXNlcl9pZCI6IjIifQ.EQK239bae2pZaRtxp_-R78v1GtToe1ZxxGXEXYBd2Eg\":*)",
+      "Bash(echo \"=== TEST 1: Endpoint /dashboard/appointments/ ===\" curl -s http://localhost:8000/api/v1/dashboard/appointments/ -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(echo \"\" echo \"=== TEST 2: Endpoint /dashboard/branches/ ===\" curl -s http://localhost:8000/api/v1/dashboard/branches/ -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1NDY2OTkwLCJpYXQiOjE3NjU0NjMzOTAsImp0aSI6IjhkMzdjNjM1YThiMTQ1MDliOTU4NDE0ODExODZjMzNhIiwidXNlcl9pZCI6IjIifQ.nKcVMzs46e29KUFTsUvP4yIFVSwHNwXySoqffDU3MpA\" echo \"=== TEST CALENDARIO CORREGIDO ===\" curl -s \"http://localhost:8000/api/v1/dashboard/branches/1/calendar/?date=2025-12-12\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(DJANGO_SETTINGS_MODULE=config.settings.development python3:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1NDcxMzU0LCJpYXQiOjE3NjU0Njc3NTQsImp0aSI6IjI1ZDI1OGI0ZjZhZDRkODA5N2Q0NTMwMjgzZTJiZmNkIiwidXNlcl9pZCI6IjIifQ.XXVqJ7Q0Cm_LsPfmlEtwmuC1Oez7suf0-C5Dzq2ebBw\" curl -s \"http://localhost:8000/api/v1/dashboard/stats/?month=2025-12\" -H \"Authorization: Bearer $TOKEN\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY1NDcxNjYxLCJpYXQiOjE3NjU0NjgwNjEsImp0aSI6IjJmYTNmOTU2MzVkZDQ0ZDZiMmYwNDhjODI2MzNlNjE1IiwidXNlcl9pZCI6IjIifQ.kb7mVwldwd88QVEMGyn1hpsk5EimPxjx-nD8GT_lK7E\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,7 @@
+-r base.txt
+
+# Servidor WSGI
+gunicorn>=21.0,<22.0
+
+# Monitoreo
+sentry-sdk>=1.38,<2.0

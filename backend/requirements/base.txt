@@ -1,0 +1,24 @@
+# Django
+Django>=5.0,<6.0
+djangorestframework>=3.14,<4.0
+django-cors-headers>=4.3,<5.0
+
+# Base de datos
+PyMySQL>=1.1,<2.0
+
+# Autenticación JWT
+djangorestframework-simplejwt>=5.3,<6.0
+
+# Validación de teléfonos
+phonenumbers>=8.13,<9.0
+
+# Celery para tareas asíncronas
+celery>=5.3,<6.0
+redis>=5.0,<6.0
+
+# Utilidades
+python-decouple>=3.8,<4.0
+Pillow>=10.0,<11.0
+
+# Zona horaria
+pytz>=2024.1

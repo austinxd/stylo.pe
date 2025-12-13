@@ -1,0 +1,93 @@
+# ==============================================
+# STYLO - Git Ignore
+# ==============================================
+
+# Variables de entorno (NUNCA subir a git)
+.env
+.env.local
+.env.*.local
+
+# ==============================================
+# Python / Django
+# ==============================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+*.pot
+*.pyc
+media/
+staticfiles/
+
+# Migrations (opcional, comentar si quieres versionarlas)
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# ==============================================
+# Node / React
+# ==============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build
+frontend/dist/
+frontend/build/
+*.local
+
+# ==============================================
+# IDEs y Editores
+# ==============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==============================================
+# Testing
+# ==============================================
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# ==============================================
+# Misc
+# ==============================================
+*.bak
+*.tmp
+*.temp
+.cache/

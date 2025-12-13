@@ -1,0 +1,3 @@
+"""
+Apps del proyecto Stylo.
+"""
