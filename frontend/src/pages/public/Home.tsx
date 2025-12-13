@@ -681,7 +681,7 @@ export default function Home() {
                   'Multi-sucursal',
                   'Gestión equipo',
                   'Sin comisiones',
-                ].map((feature, index) => (
+                ].map((feature) => (
                   <div key={feature} className="flex items-center gap-2 md:gap-3 text-left">
                     <div className="w-4 h-4 md:w-5 md:h-5 rounded-full bg-accent-500 flex items-center justify-center flex-shrink-0">
                       <Icons.Check className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" />

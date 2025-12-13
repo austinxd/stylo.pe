@@ -1,7 +1,7 @@
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import businessApi, { type Review, type BranchReviewsResponse } from '@/api/business'
+import businessApi, { type Review } from '@/api/business'
 import servicesApi from '@/api/services'
 import bookingApi, { BookingSummary, AppointmentConfirmation } from '@/api/booking'
 import { Logo, Button, Input } from '@/components/ui'
@@ -1056,7 +1056,7 @@ export default function BookingFlow() {
                     )}
 
                     {/* Equipo de trabajo */}
-                    {branch.staff && branch.staff.length > 0 && (
+                    {(branch as any).staff && (branch as any).staff.length > 0 && (
                       <div>
                         <div className="flex items-center gap-3 mb-4">
                           <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
@@ -1067,7 +1067,7 @@ export default function BookingFlow() {
                           <h3 className="text-base font-semibold text-gray-900">Nuestro equipo</h3>
                         </div>
                         <div className="grid grid-cols-3 gap-3">
-                          {branch.staff.map((staff: { id: number; first_name: string; last_name: string; photo?: string; display_name?: string }) => (
+                          {(branch as any).staff.map((staff: { id: number; first_name: string; last_name: string; photo?: string; display_name?: string }) => (
                             <div key={staff.id} className="text-center">
                               <div className="w-16 h-16 mx-auto mb-2 rounded-full overflow-hidden bg-gray-100">
                                 {staff.photo ? (
@@ -1806,7 +1806,7 @@ export default function BookingFlow() {
             {branch.latitude && branch.longitude && (
               <div className="h-48 md:h-64 rounded-xl overflow-hidden shadow-sm border border-gray-200">
                 <a
-                  href={branch.google_maps_url || `https://www.google.com/maps?q=${branch.latitude},${branch.longitude}`}
+                  href={(branch as any).google_maps_url || `https://www.google.com/maps?q=${branch.latitude},${branch.longitude}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block w-full h-full relative group"

@@ -149,7 +149,7 @@ export default function Search() {
 
 function BusinessCard({ business }: { business: Business }) {
   const [branches, setBranches] = useState<Branch[]>([])
-  const [loadingBranches, setLoadingBranches] = useState(true)
+  const [, setLoadingBranches] = useState(true)
 
   useEffect(() => {
     const loadBranches = async () => {

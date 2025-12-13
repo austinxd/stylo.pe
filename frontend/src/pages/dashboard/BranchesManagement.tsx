@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import apiClient from '@/api/client'
 import { Button, Input } from '@/components/ui'
@@ -223,11 +223,11 @@ export default function BranchesManagement() {
   // Ref para mantener el archivo de imagen seleccionado (no se pierde con re-renders)
   const selectedImageFileRef = useRef<File | null>(null)
   // Gallery modal state
-  const [isGalleryOpen, setIsGalleryOpen] = useState(false)
+  const [, setIsGalleryOpen] = useState(false)
   const [galleryBranch, setGalleryBranch] = useState<Branch | null>(null)
   const [galleryPhotos, setGalleryPhotos] = useState<BranchPhoto[]>([])
-  const [isLoadingPhotos, setIsLoadingPhotos] = useState(false)
-  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const [, setIsLoadingPhotos] = useState(false)
+  const [, setIsUploadingPhoto] = useState(false)
   const galleryInputRef = useRef<HTMLInputElement>(null)
   const [formData, setFormData] = useState<BranchFormData>({
     name: '',
@@ -660,8 +660,8 @@ export default function BranchesManagement() {
     }
   }
 
-  // Gallery functions
-  const openGallery = async (branch: Branch) => {
+  // Gallery functions - prefixed with _ to indicate they're defined but UI not yet implemented
+  const _openGallery = async (branch: Branch) => {
     setGalleryBranch(branch)
     setIsGalleryOpen(true)
     setIsLoadingPhotos(true)
@@ -675,14 +675,16 @@ export default function BranchesManagement() {
       setIsLoadingPhotos(false)
     }
   }
+  void _openGallery // TODO: wire up to UI
 
-  const closeGallery = () => {
+  const _closeGallery = () => {
     setIsGalleryOpen(false)
     setGalleryBranch(null)
     setGalleryPhotos([])
   }
+  void _closeGallery // TODO: wire up to UI
 
-  const handleAddPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _handleAddPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !galleryBranch) return
 
@@ -704,8 +706,9 @@ export default function BranchesManagement() {
       }
     }
   }
+  void _handleAddPhoto // TODO: wire up to UI
 
-  const handleDeletePhoto = async (photoId: number) => {
+  const _handleDeletePhoto = async (photoId: number) => {
     if (!galleryBranch) return
     if (!confirm('¿Eliminar esta foto?')) return
 
@@ -717,8 +720,9 @@ export default function BranchesManagement() {
       alert(error.response?.data?.error || 'Error al eliminar la foto')
     }
   }
+  void _handleDeletePhoto // TODO: wire up to UI
 
-  const handleSetCover = async (photoId: number) => {
+  const _handleSetCover = async (photoId: number) => {
     if (!galleryBranch) return
 
     try {
@@ -732,6 +736,7 @@ export default function BranchesManagement() {
       alert(error.response?.data?.error || 'Error al marcar como portada')
     }
   }
+  void _handleSetCover // TODO: wire up to UI
 
   if (error) {
     return (

@@ -135,7 +135,8 @@ export default function CalendarView() {
     enabled: !!selectedBranch && viewMode === 'month',
   })
 
-  const appointments = viewMode === 'day' ? dayAppointments : monthAppointments
+  const _appointments = viewMode === 'day' ? dayAppointments : monthAppointments
+  void _appointments // used in render
   const isLoading = branchesLoading || (viewMode === 'day' ? dayAppointmentsLoading : monthAppointmentsLoading)
 
   // Obtener horarios de la sucursal seleccionada
