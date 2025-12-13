@@ -292,6 +292,10 @@ export default function BookingFlow() {
     })
   }
 
+  // Desktop reviews tab state (Planity style: calificacion | comentarios)
+  type DesktopReviewTab = 'rating' | 'comments'
+  const [desktopReviewTab, setDesktopReviewTab] = useState<DesktopReviewTab>('rating')
+
   // Obtener datos de la sucursal
   const { data: branch, isLoading: loadingBranch } = useQuery({
     queryKey: ['branch', businessSlug, branchSlug],
@@ -1663,87 +1667,155 @@ export default function BookingFlow() {
                 </div>
               </div>
 
-              {/* Sección de Reseñas en columna derecha - Estilo Planity */}
+              {/* Sección de Reseñas con Tabs - Estilo Planity */}
               {reviewsData && reviewsData.total_reviews > 0 && (
                 <div className="mt-6 bg-white rounded-2xl border border-gray-100 overflow-hidden">
-                  {/* Header de reseñas */}
-                  <div className="px-5 py-4 border-b border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-900">Opiniones</h3>
-                      <div className="flex items-center gap-1.5 bg-amber-50 px-2.5 py-1 rounded-full">
-                        <Icons.Star />
-                        <span className="font-bold text-gray-900 text-sm">{reviewsData.average_rating?.toFixed(1)}</span>
-                        <span className="text-gray-500 text-xs">({reviewsData.total_reviews})</span>
-                      </div>
-                    </div>
+                  {/* Tabs Header */}
+                  <div className="flex border-b border-gray-100">
+                    <button
+                      onClick={() => setDesktopReviewTab('rating')}
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
+                        desktopReviewTab === 'rating'
+                          ? 'text-gray-900'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Calificación general
+                      {desktopReviewTab === 'rating' && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setDesktopReviewTab('comments')}
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
+                        desktopReviewTab === 'comments'
+                          ? 'text-gray-900'
+                          : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      Opiniones
+                      {desktopReviewTab === 'comments' && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gray-900" />
+                      )}
+                    </button>
                   </div>
 
-                  {/* Lista de reseñas - máximo 3 visibles */}
-                  <div className="divide-y divide-gray-100 max-h-[400px] overflow-y-auto">
-                    {reviewsData.reviews?.slice(0, 5).map((review: Review) => (
-                      <div key={review.id} className="px-5 py-4">
-                        <div className="flex items-start gap-3">
-                          {/* Avatar */}
-                          <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-sm font-medium text-gray-600">
-                              {review.client_name?.charAt(0).toUpperCase() || 'C'}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            {/* Nombre y rating */}
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-gray-900 text-sm truncate">
-                                {review.client_name || 'Cliente'}
-                              </span>
-                              <div className="flex items-center gap-0.5">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                  <svg
-                                    key={star}
-                                    className={`w-3.5 h-3.5 ${star <= review.rating ? 'text-amber-400' : 'text-gray-200'}`}
-                                    fill="currentColor"
-                                    viewBox="0 0 20 20"
-                                  >
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                  </svg>
-                                ))}
-                              </div>
+                  {/* Tab Content */}
+                  <div className="p-5">
+                    {desktopReviewTab === 'rating' ? (
+                      /* Tab 1: Calificación General */
+                      <div className="flex gap-5">
+                        {/* Rating grande */}
+                        <div className="flex-shrink-0 w-20 h-20 bg-gray-900 rounded-xl flex items-center justify-center">
+                          <span className="text-3xl font-bold text-white">
+                            {reviewsData.average_rating?.toFixed(1)}
+                          </span>
+                        </div>
+                        {/* Categorías de rating */}
+                        <div className="flex-1 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Atención</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm font-medium text-gray-900">{reviewsData.average_rating?.toFixed(1)}</span>
+                              <Icons.Star />
                             </div>
-                            {/* Fecha */}
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {review.created_at ? format(parseISO(review.created_at), "d MMM yyyy", { locale: es }) : ''}
-                            </p>
-                            {/* Comentario */}
-                            {review.comment && (
-                              <p className="text-sm text-gray-600 mt-2 line-clamp-3">
-                                {review.comment}
-                              </p>
-                            )}
-                            {/* Servicio */}
-                            {review.service_name && (
-                              <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                                </svg>
-                                {review.service_name}
-                              </p>
-                            )}
                           </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Limpieza</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm font-medium text-gray-900">{reviewsData.average_rating?.toFixed(1)}</span>
+                              <Icons.Star />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Ambiente</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm font-medium text-gray-900">{reviewsData.average_rating?.toFixed(1)}</span>
+                              <Icons.Star />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Calidad</span>
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm font-medium text-gray-900">{reviewsData.average_rating?.toFixed(1)}</span>
+                              <Icons.Star />
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-400 pt-1">
+                            {reviewsData.total_reviews} clientes dieron su opinión
+                          </p>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      /* Tab 2: Lista de Comentarios */
+                      <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                        {reviewsData.reviews?.slice(0, 10).map((review: Review) => (
+                          <div key={review.id} className="flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-sm font-medium text-gray-600">
+                                {review.client_name?.charAt(0).toUpperCase() || 'C'}
+                              </span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-gray-900 text-sm truncate">
+                                  {review.client_name || 'Cliente'}
+                                </span>
+                                <div className="flex items-center gap-0.5">
+                                  {[1, 2, 3, 4, 5].map((star) => (
+                                    <svg
+                                      key={star}
+                                      className={`w-3 h-3 ${star <= review.rating ? 'text-amber-400' : 'text-gray-200'}`}
+                                      fill="currentColor"
+                                      viewBox="0 0 20 20"
+                                    >
+                                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                    </svg>
+                                  ))}
+                                </div>
+                              </div>
+                              <p className="text-xs text-gray-400">
+                                {review.created_at ? format(parseISO(review.created_at), "d MMM yyyy", { locale: es }) : ''}
+                              </p>
+                              {review.comment && (
+                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                  {review.comment}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                </div>
+              )}
 
-                  {/* Ver todas las opiniones */}
-                  {reviewsData.total_reviews > 5 && (
-                    <div className="px-5 py-3 border-t border-gray-100 bg-gray-50">
-                      <button className="w-full text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center justify-center gap-1">
-                        Ver las {reviewsData.total_reviews} opiniones
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
+              {/* Horarios de apertura - Estilo Planity */}
+              {(branch.opening_time || branch.closing_time) && (
+                <div className="mt-6 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-gray-100">
+                    <h3 className="font-semibold text-gray-900">Horarios de apertura</h3>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((day, index) => {
+                      const isToday = new Date().getDay() === (index === 6 ? 0 : index + 1)
+                      const isClosed = index === 6 // Domingo cerrado por defecto
+                      return (
+                        <div
+                          key={day}
+                          className={`flex items-center justify-between px-5 py-3 ${isToday ? 'bg-gray-50' : ''}`}
+                        >
+                          <span className={`text-sm ${isToday ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                            {day}
+                          </span>
+                          <span className={`text-sm ${isClosed ? 'text-gray-400' : isToday ? 'font-semibold text-gray-900' : 'text-gray-900'}`}>
+                            {isClosed ? 'Cerrado' : `${branch.opening_time?.slice(0, 5)} - ${branch.closing_time?.slice(0, 5)}`}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
