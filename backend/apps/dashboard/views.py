@@ -1548,12 +1548,23 @@ class OnboardingCompleteView(APIView):
 
                 # 4. Crear profesional (opcional)
                 if data.get('add_self_as_staff', False):
+                    # Obtener datos del perfil del dueño si existe
+                    owner_profile = getattr(user, 'owner_profile', None)
+                    staff_first_name = owner_profile.first_name if owner_profile else 'Profesional'
+                    staff_last_name_paterno = owner_profile.last_name_paterno if owner_profile else ''
+                    staff_last_name_materno = owner_profile.last_name_materno if owner_profile else ''
+                    staff_doc_type = owner_profile.document_type if owner_profile else 'dni'
+                    staff_doc_number = owner_profile.document_number if owner_profile else f'AUTO{user.id}'
+
                     staff_created = StaffMember.objects.create(
                         user=user,
                         current_business=business,
-                        first_name=user.first_name or 'Profesional',
-                        last_name=user.last_name or '',
-                        phone=user.phone or data.get('branch_phone', ''),
+                        first_name=staff_first_name,
+                        last_name_paterno=staff_last_name_paterno,
+                        last_name_materno=staff_last_name_materno,
+                        document_type=staff_doc_type,
+                        document_number=staff_doc_number,
+                        phone_number=user.phone_number or data.get('branch_phone', ''),
                         specialty=data.get('staff_specialty', ''),
                         employment_status='active',
                         is_active=True,
@@ -1573,22 +1584,20 @@ class OnboardingCompleteView(APIView):
 
                 # 5. Crear servicio (opcional)
                 if data.get('add_first_service', False) and data.get('service_name'):
-                    # Obtener o crear categoria por defecto
+                    # Obtener o crear categoria por defecto (global)
                     category, _ = ServiceCategory.objects.get_or_create(
-                        business=business,
                         name='General',
                         defaults={'description': 'Servicios generales', 'order': 0}
                     )
 
                     service_created = Service.objects.create(
-                        business=business,
+                        branch=branch,
                         category=category,
                         name=data['service_name'],
-                        duration=int(data.get('service_duration', 60)),
+                        duration_minutes=int(data.get('service_duration', 60)),
                         price=float(data.get('service_price', 50)),
                         is_active=True,
                     )
-                    service_created.branches.add(branch)
 
                     # Asignar servicio al staff si existe
                     if staff_created:

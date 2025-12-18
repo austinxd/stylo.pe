@@ -151,7 +151,11 @@ export default function OnboardingWizard() {
       navigate('/dashboard', { replace: true })
     },
     onError: (error: any) => {
-      const message = error.response?.data?.error || 'Error al crear el negocio'
+      // El backend puede retornar error como string o como objeto {code, message, details}
+      const errorData = error.response?.data?.error
+      const message = typeof errorData === 'string'
+        ? errorData
+        : errorData?.message || 'Error al crear el negocio'
       toast.error(message)
       setErrors({ general: message })
     },
