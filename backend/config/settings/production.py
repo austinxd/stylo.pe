@@ -6,6 +6,9 @@ import sentry_sdk
 
 DEBUG = False
 
+# Media files - URL absoluta para que el frontend pueda acceder
+MEDIA_URL = 'https://api.stylo.pe/media/'
+
 # Seguridad
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
