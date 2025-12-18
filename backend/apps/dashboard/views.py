@@ -1524,7 +1524,8 @@ class OnboardingCompleteView(APIView):
                     email=data.get('branch_email', ''),
                 )
 
-                # 3. Crear horarios de la sucursal
+                # 3. Crear horarios de la sucursal (BranchSchedule)
+                from apps.scheduling.models import BranchSchedule
                 schedule_data = data.get('schedule', {})
                 day_mapping = {
                     'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
@@ -1533,15 +1534,14 @@ class OnboardingCompleteView(APIView):
 
                 for day_name, day_num in day_mapping.items():
                     day_schedule = schedule_data.get(day_name, {})
-                    if day_schedule.get('enabled', False):
-                        WorkSchedule.objects.create(
-                            branch=branch,
-                            staff=None,  # Horario de sucursal, no de staff
-                            day_of_week=day_num,
-                            start_time=day_schedule.get('open', '09:00'),
-                            end_time=day_schedule.get('close', '19:00'),
-                            is_active=True
-                        )
+                    is_open = day_schedule.get('enabled', False)
+                    BranchSchedule.objects.create(
+                        branch=branch,
+                        day_of_week=day_num,
+                        opening_time=day_schedule.get('open', '09:00'),
+                        closing_time=day_schedule.get('close', '19:00'),
+                        is_open=is_open
+                    )
 
                 staff_created = None
                 service_created = None
@@ -1571,15 +1571,15 @@ class OnboardingCompleteView(APIView):
                     )
                     staff_created.branches.add(branch)
 
-                    # Copiar horarios de sucursal al staff
-                    for schedule in branch.schedules.filter(staff__isnull=True):
+                    # Copiar horarios de sucursal al staff (de BranchSchedule a WorkSchedule)
+                    for branch_schedule in branch.schedules.filter(is_open=True):
                         WorkSchedule.objects.create(
                             branch=branch,
                             staff=staff_created,
-                            day_of_week=schedule.day_of_week,
-                            start_time=schedule.start_time,
-                            end_time=schedule.end_time,
-                            is_active=True
+                            day_of_week=branch_schedule.day_of_week,
+                            start_time=branch_schedule.opening_time,
+                            end_time=branch_schedule.closing_time,
+                            is_working=True
                         )
 
                 # 5. Crear servicio (opcional)
