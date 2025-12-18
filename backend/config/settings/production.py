@@ -14,6 +14,13 @@ SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
+# CSRF Trusted Origins
+CSRF_TRUSTED_ORIGINS = [
+    'https://stylo.pe',
+    'https://www.stylo.pe',
+    'https://api.stylo.pe',
+]
+
 # Sentry
 SENTRY_DSN = config('SENTRY_DSN', default='')
 if SENTRY_DSN:
