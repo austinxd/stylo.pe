@@ -69,7 +69,7 @@ export default function DashboardHome() {
   const { data: onboardingStatus, isLoading: checkingOnboarding } = useQuery({
     queryKey: ['dashboard', 'onboarding-status'],
     queryFn: async () => {
-      const response = await apiClient.get<OnboardingStatus>('/dashboard/onboarding')
+      const response = await apiClient.get<OnboardingStatus>('/dashboard/onboarding/')
       return response.data
     },
     enabled: user?.role === 'business_owner',
