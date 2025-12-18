@@ -93,7 +93,8 @@ class MyBusinessView(APIView):
         # Campos permitidos para actualizar
         allowed_fields = [
             'name', 'description', 'email', 'phone', 'website',
-            'instagram', 'facebook', 'primary_color', 'secondary_color'
+            'instagram', 'facebook', 'primary_color', 'secondary_color',
+            'cover_position'
         ]
 
         data = request.data

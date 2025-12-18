@@ -97,6 +97,11 @@ class Business(models.Model):
         blank=True,
         null=True
     )
+    cover_position = models.PositiveSmallIntegerField(
+        'Posición de portada',
+        default=50,
+        help_text='Posición vertical de la imagen (0=arriba, 50=centro, 100=abajo)'
+    )
 
     # Estado
     is_active = models.BooleanField('Activo', default=True)

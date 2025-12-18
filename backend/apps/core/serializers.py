@@ -193,7 +193,7 @@ class BusinessPublicDetailSerializer(serializers.ModelSerializer):
         model = Business
         fields = [
             'id', 'name', 'slug', 'description', 'logo', 'cover_image',
-            'primary_color', 'secondary_color',
+            'cover_position', 'primary_color', 'secondary_color',
             'email', 'phone', 'website', 'instagram', 'facebook',
             'is_verified', 'branches', 'branches_count', 'has_multiple_branches',
             'categories'

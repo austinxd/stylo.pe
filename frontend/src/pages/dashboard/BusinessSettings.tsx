@@ -36,6 +36,7 @@ interface Business {
   description: string
   logo: string | null
   cover_image: string | null
+  cover_position: number
   email: string
   phone: string
   website: string
@@ -82,6 +83,9 @@ export default function BusinessSettings() {
   const [uploadingCover, setUploadingCover] = useState(false)
   const [selectedCategories, setSelectedCategories] = useState<number[]>([])
   const [savingCategories, setSavingCategories] = useState(false)
+  const [editingCoverPosition, setEditingCoverPosition] = useState(false)
+  const [coverPosition, setCoverPosition] = useState(50)
+  const [savingCoverPosition, setSavingCoverPosition] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const coverInputRef = useRef<HTMLInputElement>(null)
 
@@ -122,6 +126,8 @@ export default function BusinessSettings() {
       if (b.categories) {
         setSelectedCategories(b.categories.map((c: Category) => c.id))
       }
+      // Inicializar posición de portada
+      setCoverPosition(b.cover_position ?? 50)
     }
   }, [businessData])
 
@@ -191,6 +197,26 @@ export default function BusinessSettings() {
         return
       }
       uploadImage(file, 'cover_image')
+    }
+  }
+
+  const handleSaveCoverPosition = async () => {
+    setSavingCoverPosition(true)
+    setErrorMessage('')
+    try {
+      await apiClient.patch('/dashboard/my-business/', {
+        cover_position: coverPosition
+      })
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'my-business'] })
+      setSuccessMessage('Posicion de portada guardada')
+      setEditingCoverPosition(false)
+      setTimeout(() => setSuccessMessage(''), 3000)
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Error al guardar la posicion'
+      setErrorMessage(message)
+      setTimeout(() => setErrorMessage(''), 5000)
+    } finally {
+      setSavingCoverPosition(false)
     }
   }
 
@@ -337,31 +363,85 @@ export default function BusinessSettings() {
               src={business.cover_image}
               alt="Cover"
               className="absolute inset-0 w-full h-full object-cover"
+              style={{ objectPosition: `center ${editingCoverPosition ? coverPosition : (business.cover_position ?? 50)}%` }}
             />
           ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 to-transparent" />
 
-          {/* Edit cover button */}
-          <button
-            onClick={() => coverInputRef.current?.click()}
-            disabled={uploadingCover}
-            className="absolute top-3 right-3 px-3 py-1.5 bg-black/50 hover:bg-black/70 text-white text-sm font-medium rounded-lg backdrop-blur-sm transition-all opacity-0 group-hover:opacity-100 flex items-center gap-2"
-          >
-            {uploadingCover ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Subiendo...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Cambiar portada
-              </>
-            )}
-          </button>
+          {/* Position editor overlay */}
+          {editingCoverPosition && business?.cover_image && (
+            <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-3 z-10">
+              <p className="text-white text-sm font-medium">Arrastra el slider para ajustar la posicion</p>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={coverPosition}
+                onChange={(e) => setCoverPosition(Number(e.target.value))}
+                className="w-48 h-2 bg-white/30 rounded-lg appearance-none cursor-pointer accent-white"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setCoverPosition(business.cover_position ?? 50)
+                    setEditingCoverPosition(false)
+                  }}
+                  className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white text-sm font-medium rounded-lg backdrop-blur-sm"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveCoverPosition}
+                  disabled={savingCoverPosition}
+                  className="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-900 text-sm font-medium rounded-lg flex items-center gap-2"
+                >
+                  {savingCoverPosition ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                      Guardando...
+                    </>
+                  ) : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Edit cover buttons */}
+          {!editingCoverPosition && (
+            <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+              {business?.cover_image && (
+                <button
+                  onClick={() => setEditingCoverPosition(true)}
+                  className="px-3 py-1.5 bg-black/50 hover:bg-black/70 text-white text-sm font-medium rounded-lg backdrop-blur-sm flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  </svg>
+                  Ajustar
+                </button>
+              )}
+              <button
+                onClick={() => coverInputRef.current?.click()}
+                disabled={uploadingCover}
+                className="px-3 py-1.5 bg-black/50 hover:bg-black/70 text-white text-sm font-medium rounded-lg backdrop-blur-sm flex items-center gap-2"
+              >
+                {uploadingCover ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Subiendo...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Cambiar
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Profile Info */}
