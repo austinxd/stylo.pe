@@ -366,7 +366,7 @@ export default function BusinessSettings() {
               style={{ objectPosition: `center ${editingCoverPosition ? coverPosition : (business.cover_position ?? 50)}%` }}
             />
           ) : null}
-          <div className="absolute inset-0 bg-gradient-to-t from-gray-900/90 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-gray-900/60 via-transparent to-transparent" />
 
           {/* Position editor overlay */}
           {editingCoverPosition && business?.cover_image && (
