@@ -19,6 +19,7 @@ redis>=5.0,<6.0
 # Utilidades
 python-decouple>=3.8,<4.0
 Pillow>=10.0,<11.0
+requests>=2.31,<3.0
 
 # Zona horaria
 pytz>=2024.1
