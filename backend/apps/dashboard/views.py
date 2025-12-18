@@ -1456,3 +1456,173 @@ class OnboardingView(APIView):
                 'slug': branch.slug,
             }
         }, status=status.HTTP_201_CREATED)
+
+
+class OnboardingCompleteView(APIView):
+    """
+    POST /dashboard/onboarding/complete
+    Wizard completo de onboarding: negocio + sucursal + horarios + profesional + servicio.
+    """
+    permission_classes = [IsBusinessOwner]
+
+    def post(self, request):
+        """Crea el negocio completo con todos los datos del wizard."""
+        from django.utils.text import slugify
+        from django.db import transaction
+        from apps.scheduling.models import WorkSchedule
+        from apps.services.models import Service, ServiceCategory, StaffService
+        import random
+        import string
+
+        user = request.user
+
+        # Verificar que no tenga negocio
+        if user.owned_businesses.exists():
+            return Response(
+                {'error': 'Ya tienes un negocio registrado'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        data = request.data
+
+        # Validar campos requeridos
+        required_fields = ['business_name', 'branch_address', 'branch_phone']
+        missing = [f for f in required_fields if not data.get(f)]
+        if missing:
+            return Response(
+                {'error': f'Campos requeridos: {", ".join(missing)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            with transaction.atomic():
+                # 1. Crear negocio
+                base_slug = slugify(data['business_name'])
+                slug = base_slug or 'negocio'
+                while Business.objects.filter(slug=slug).exists():
+                    suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+                    slug = f"{base_slug}-{suffix}"
+
+                business = Business.objects.create(
+                    name=data['business_name'],
+                    slug=slug,
+                    description=data.get('business_description', ''),
+                    primary_color=data.get('primary_color', '#1a1a2e'),
+                    secondary_color=data.get('secondary_color', '#c9a227'),
+                )
+                user.owned_businesses.add(business)
+
+                # 2. Crear sucursal
+                branch_name = data.get('branch_name', 'Sucursal Principal')
+                branch_slug = slugify(branch_name) or 'principal'
+                branch = Branch.objects.create(
+                    business=business,
+                    name=branch_name,
+                    slug=branch_slug,
+                    address=data['branch_address'],
+                    phone=data['branch_phone'],
+                    email=data.get('branch_email', ''),
+                )
+
+                # 3. Crear horarios de la sucursal
+                schedule_data = data.get('schedule', {})
+                day_mapping = {
+                    'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
+                    'friday': 4, 'saturday': 5, 'sunday': 6
+                }
+
+                for day_name, day_num in day_mapping.items():
+                    day_schedule = schedule_data.get(day_name, {})
+                    if day_schedule.get('enabled', False):
+                        WorkSchedule.objects.create(
+                            branch=branch,
+                            staff=None,  # Horario de sucursal, no de staff
+                            day_of_week=day_num,
+                            start_time=day_schedule.get('open', '09:00'),
+                            end_time=day_schedule.get('close', '19:00'),
+                            is_active=True
+                        )
+
+                staff_created = None
+                service_created = None
+
+                # 4. Crear profesional (opcional)
+                if data.get('add_self_as_staff', False):
+                    staff_created = StaffMember.objects.create(
+                        user=user,
+                        current_business=business,
+                        first_name=user.first_name or 'Profesional',
+                        last_name=user.last_name or '',
+                        phone=user.phone or data.get('branch_phone', ''),
+                        specialty=data.get('staff_specialty', ''),
+                        employment_status='active',
+                        is_active=True,
+                    )
+                    staff_created.branches.add(branch)
+
+                    # Copiar horarios de sucursal al staff
+                    for schedule in branch.schedules.filter(staff__isnull=True):
+                        WorkSchedule.objects.create(
+                            branch=branch,
+                            staff=staff_created,
+                            day_of_week=schedule.day_of_week,
+                            start_time=schedule.start_time,
+                            end_time=schedule.end_time,
+                            is_active=True
+                        )
+
+                # 5. Crear servicio (opcional)
+                if data.get('add_first_service', False) and data.get('service_name'):
+                    # Obtener o crear categoria por defecto
+                    category, _ = ServiceCategory.objects.get_or_create(
+                        business=business,
+                        name='General',
+                        defaults={'description': 'Servicios generales', 'order': 0}
+                    )
+
+                    service_created = Service.objects.create(
+                        business=business,
+                        category=category,
+                        name=data['service_name'],
+                        duration=int(data.get('service_duration', 60)),
+                        price=float(data.get('service_price', 50)),
+                        is_active=True,
+                    )
+                    service_created.branches.add(branch)
+
+                    # Asignar servicio al staff si existe
+                    if staff_created:
+                        StaffService.objects.create(
+                            staff=staff_created,
+                            service=service_created,
+                            custom_duration=None,
+                            custom_price=None,
+                            is_active=True
+                        )
+
+                return Response({
+                    'success': True,
+                    'business': {
+                        'id': business.id,
+                        'name': business.name,
+                        'slug': business.slug,
+                    },
+                    'branch': {
+                        'id': branch.id,
+                        'name': branch.name,
+                    },
+                    'staff': {
+                        'id': staff_created.id,
+                        'name': staff_created.full_name,
+                    } if staff_created else None,
+                    'service': {
+                        'id': service_created.id,
+                        'name': service_created.name,
+                    } if service_created else None,
+                }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {'error': f'Error al crear el negocio: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

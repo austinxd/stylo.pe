@@ -11,7 +11,8 @@ from .views import (
     DashboardStaffViewSet,
     DashboardServiceViewSet,
     DashboardAppointmentViewSet,
-    OnboardingView
+    OnboardingView,
+    OnboardingCompleteView
 )
 
 router = DefaultRouter()
@@ -25,5 +26,6 @@ urlpatterns = [
     path('summary/', DashboardSummaryView.as_view(), name='dashboard-summary'),
     path('stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
     path('onboarding/', OnboardingView.as_view(), name='dashboard-onboarding'),
+    path('onboarding/complete/', OnboardingCompleteView.as_view(), name='dashboard-onboarding-complete'),
     path('', include(router.urls)),
 ]

@@ -26,7 +26,7 @@ import Profile from '@/pages/client/Profile'
 import DashboardHome from '@/pages/dashboard/DashboardHome'
 import AppointmentsPage from '@/pages/dashboard/AppointmentsPage'
 import QRCodeGenerator from '@/pages/dashboard/QRCodeGenerator'
-import Onboarding from '@/pages/dashboard/Onboarding'
+import OnboardingWizard from '@/pages/dashboard/OnboardingWizard'
 import ServicesManagement from '@/pages/dashboard/ServicesManagement'
 import StaffManagement from '@/pages/dashboard/StaffManagement'
 import BranchesManagement from '@/pages/dashboard/BranchesManagement'
@@ -88,7 +88,7 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardHome />} />
-        <Route path="/dashboard/onboarding" element={<Onboarding />} />
+        <Route path="/dashboard/onboarding" element={<OnboardingWizard />} />
         <Route path="/dashboard/citas" element={<AppointmentsPage />} />
         <Route path="/dashboard/servicios" element={<ServicesManagement />} />
         <Route path="/dashboard/equipo" element={<StaffManagement />} />
