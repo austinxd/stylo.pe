@@ -132,7 +132,7 @@ export default function OnboardingWizard() {
   const { data: onboardingStatus, isLoading: checkingStatus } = useQuery({
     queryKey: ['dashboard', 'onboarding-status'],
     queryFn: async () => {
-      const response = await apiClient.get<OnboardingStatus>('/dashboard/onboarding')
+      const response = await apiClient.get<OnboardingStatus>('/dashboard/onboarding/')
       return response.data
     },
     enabled: user?.role === 'business_owner',
@@ -141,7 +141,7 @@ export default function OnboardingWizard() {
   // Create business mutation
   const createBusiness = useMutation({
     mutationFn: async (data: OnboardingData) => {
-      const response = await apiClient.post('/dashboard/onboarding/complete', data)
+      const response = await apiClient.post('/dashboard/onboarding/complete/', data)
       return response.data
     },
     onSuccess: () => {
