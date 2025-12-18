@@ -2,9 +2,11 @@
 Serializers para modelos core.
 """
 from rest_framework import serializers
-from django.db.models import Avg
+from django.db.models import Avg, Q
+from django.utils import timezone
 from .models import Business, Branch, BranchPhoto, BusinessCategory, Review, ReviewToken
 from apps.accounts.models import StaffMember
+from apps.subscriptions.models import StaffSubscription
 
 
 class BusinessCategorySerializer(serializers.ModelSerializer):
@@ -128,8 +130,22 @@ class BranchPublicDetailSerializer(serializers.ModelSerializer):
         return obj.reviews.filter(is_approved=True).count()
 
     def get_staff(self, obj):
-        """Retorna los profesionales activos de la sucursal."""
-        staff_members = StaffMember.objects.filter(branches=obj, is_active=True)
+        """Retorna los profesionales activos de la sucursal con membresía válida."""
+        # Obtener IDs de profesionales con membresía válida:
+        # is_active=True AND (is_billable=True OR trial_ends_at > now)
+        now = timezone.now()
+        valid_staff_ids = StaffSubscription.objects.filter(
+            business=obj.business,
+            is_active=True
+        ).filter(
+            Q(is_billable=True) | Q(trial_ends_at__gt=now)
+        ).values_list('staff_id', flat=True)
+
+        staff_members = StaffMember.objects.filter(
+            branches=obj,
+            is_active=True,
+            id__in=valid_staff_ids
+        )
         return BranchStaffPublicSerializer(staff_members, many=True).data
 
 

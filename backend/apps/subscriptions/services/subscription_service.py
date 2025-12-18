@@ -286,6 +286,11 @@ class SubscriptionService:
             'next_billing_date': subscription.next_billing_date,
             'last_payment_date': subscription.last_payment_date,
             'last_payment_amount': str(subscription.last_payment_amount) if subscription.last_payment_amount else None,
+            # Campos de cortesía
+            'has_courtesy_access': subscription.has_courtesy_access,
+            'is_courtesy_active': subscription.is_courtesy_active,
+            'courtesy_until': subscription.courtesy_until,
+            'courtesy_reason': subscription.courtesy_reason or '',
             'plan': {
                 'name': plan.name if plan else None,
                 'price_per_staff': str(plan.price_per_staff) if plan else None,

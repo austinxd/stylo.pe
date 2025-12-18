@@ -158,6 +158,45 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
+# Celery Beat Schedule (tareas programadas)
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'check-expired-trials': {
+        'task': 'subscriptions.check_expired_trials',
+        'schedule': crontab(hour=0, minute=5),  # 00:05 AM diario
+    },
+    'generate-monthly-invoices': {
+        'task': 'subscriptions.generate_monthly_invoices',
+        'schedule': crontab(hour=1, minute=0, day_of_month=1),  # 01:00 AM día 1 del mes
+    },
+    'process-pending-payments': {
+        'task': 'subscriptions.process_pending_payments',
+        'schedule': crontab(hour=9, minute=0),  # 09:00 AM diario
+    },
+    'send-payment-reminders': {
+        'task': 'subscriptions.send_payment_reminders',
+        'schedule': crontab(hour=10, minute=0),  # 10:00 AM diario
+    },
+    'suspend-unpaid-subscriptions': {
+        'task': 'subscriptions.suspend_unpaid_subscriptions',
+        'schedule': crontab(hour=23, minute=0),  # 11:00 PM diario
+    },
+}
+
+# Culqi Configuration (Pasarela de pagos)
+CULQI_PUBLIC_KEY = config('CULQI_PUBLIC_KEY', default='')
+CULQI_SECRET_KEY = config('CULQI_SECRET_KEY', default='')
+
+# Subscription Configuration
+# Permitir activación manual de suscripciones (sin pago real)
+# Útil para desarrollo/testing. Desactivar en producción.
+SUBSCRIPTION_ALLOW_MANUAL_ACTIVATION = config(
+    'SUBSCRIPTION_ALLOW_MANUAL_ACTIVATION',
+    default=True,
+    cast=bool
+)
+
 # OTP Configuration
 OTP_LENGTH = 6
 OTP_EXPIRY_MINUTES = 5

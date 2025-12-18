@@ -8,10 +8,12 @@ from rest_framework.permissions import AllowAny
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db.models import Q
 
 from apps.core.models import Branch
 from apps.services.models import Service
 from apps.accounts.models import StaffMember
+from apps.subscriptions.models import StaffSubscription
 from .services import AvailabilityService
 from .serializers import DayAvailabilitySerializer
 
@@ -46,6 +48,18 @@ class AvailabilityView(APIView):
             staff = get_object_or_404(
                 StaffMember, pk=staff_id, branches=branch, is_active=True
             )
+            # Verificar que tenga membresía válida (billable o en trial vigente)
+            now = timezone.now()
+            has_valid_subscription = StaffSubscription.objects.filter(
+                staff=staff, business=branch.business, is_active=True
+            ).filter(
+                Q(is_billable=True) | Q(trial_ends_at__gt=now)
+            ).exists()
+            if not has_valid_subscription:
+                return Response(
+                    {'error': 'Profesional no disponible para reservas'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         # Fecha (por defecto hoy)
         if date_str:
@@ -122,6 +136,18 @@ class MonthAvailabilityView(APIView):
             staff = get_object_or_404(
                 StaffMember, pk=staff_id, branches=branch, is_active=True
             )
+            # Verificar que tenga membresía válida (billable o en trial vigente)
+            now = timezone.now()
+            has_valid_subscription = StaffSubscription.objects.filter(
+                staff=staff, business=branch.business, is_active=True
+            ).filter(
+                Q(is_billable=True) | Q(trial_ends_at__gt=now)
+            ).exists()
+            if not has_valid_subscription:
+                return Response(
+                    {'error': 'Profesional no disponible para reservas'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         # Determinar rango de fechas
         today = timezone.now().date()

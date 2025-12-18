@@ -2,7 +2,10 @@
 Serializers para servicios.
 """
 from rest_framework import serializers
+from django.utils import timezone
+from django.db.models import Q
 from .models import ServiceCategory, Service, StaffService
+from apps.subscriptions.models import StaffSubscription
 
 
 class ServiceCategorySerializer(serializers.ModelSerializer):
@@ -76,9 +79,20 @@ class ServiceWithStaffSerializer(serializers.ModelSerializer):
         ]
 
     def get_staff_providers(self, obj):
+        # Obtener IDs de profesionales con membresía válida:
+        # - is_active=True AND (is_billable=True OR trial_ends_at > now)
+        now = timezone.now()
+        valid_subscription_staff_ids = StaffSubscription.objects.filter(
+            business=obj.branch.business,
+            is_active=True
+        ).filter(
+            Q(is_billable=True) | Q(trial_ends_at__gt=now)
+        ).values_list('staff_id', flat=True)
+
         active_providers = obj.staff_providers.filter(
             is_active=True,
-            staff__is_active=True
+            staff__is_active=True,
+            staff_id__in=valid_subscription_staff_ids
         ).select_related('staff')
         return [
             {

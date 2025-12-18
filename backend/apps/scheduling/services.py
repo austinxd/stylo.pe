@@ -9,6 +9,7 @@ from django.db.models import Q
 from apps.core.models import Branch
 from apps.accounts.models import StaffMember
 from apps.services.models import Service, StaffService
+from apps.subscriptions.models import StaffSubscription
 from .models import BranchSchedule, WorkSchedule, BlockedTime, SpecialDate
 
 
@@ -120,14 +121,33 @@ class AvailabilityService:
         service_duration = service.total_duration
 
         # Determinar qué profesionales considerar
+        now = timezone.now()
         if staff:
-            staff_list = [staff]
+            # Verificar que el staff tiene membresía válida:
+            # is_active=True AND (is_billable=True OR trial_ends_at > now)
+            has_valid_subscription = StaffSubscription.objects.filter(
+                staff=staff,
+                business=self.branch.business,
+                is_active=True
+            ).filter(
+                Q(is_billable=True) | Q(trial_ends_at__gt=now)
+            ).exists()
+            staff_list = [staff] if has_valid_subscription else []
         else:
-            # Obtener todos los profesionales que ofrecen el servicio
+            # Obtener IDs de profesionales con membresía válida
+            valid_staff_ids = StaffSubscription.objects.filter(
+                business=self.branch.business,
+                is_active=True
+            ).filter(
+                Q(is_billable=True) | Q(trial_ends_at__gt=now)
+            ).values_list('staff_id', flat=True)
+
+            # Obtener todos los profesionales que ofrecen el servicio Y tienen membresía válida
             staff_services = StaffService.objects.filter(
                 service=service,
                 is_active=True,
-                staff__is_active=True
+                staff__is_active=True,
+                staff_id__in=valid_staff_ids
             ).select_related('staff')
             staff_list = [ss.staff for ss in staff_services]
 

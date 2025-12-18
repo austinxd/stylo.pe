@@ -3,12 +3,14 @@ Serializers para citas.
 """
 from rest_framework import serializers
 from django.utils import timezone
+from django.db.models import Q
 from datetime import timedelta
 
 from .models import Appointment, AppointmentReminder
 from apps.services.models import Service, StaffService
 from apps.accounts.models import StaffMember, Client, BookingSession
 from apps.core.models import Branch
+from apps.subscriptions.models import StaffSubscription
 
 
 class PublicBookingStartSerializer(serializers.Serializer):
@@ -74,6 +76,22 @@ class PublicBookingStartSerializer(serializers.Serializer):
         except StaffMember.DoesNotExist:
             raise serializers.ValidationError({
                 'staff_id': 'Profesional no disponible en esta sucursal'
+            })
+
+        # Verificar que el profesional tenga membresía válida:
+        # is_active=True AND (is_billable=True OR trial_ends_at > now)
+        branch = Branch.objects.get(pk=branch_id)
+        now = timezone.now()
+        has_valid_subscription = StaffSubscription.objects.filter(
+            staff=staff,
+            business=branch.business,
+            is_active=True
+        ).filter(
+            Q(is_billable=True) | Q(trial_ends_at__gt=now)
+        ).exists()
+        if not has_valid_subscription:
+            raise serializers.ValidationError({
+                'staff_id': 'Profesional no disponible para reservas en este momento'
             })
 
         # Verificar que el profesional ofrece el servicio
