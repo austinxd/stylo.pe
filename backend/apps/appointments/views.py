@@ -219,17 +219,20 @@ class PublicBookingViewSet(viewsets.ViewSet):
         session.expires_at = timezone.now() + timedelta(minutes=5)  # OTP válido 5 min
         session.save()
 
-        # TODO: Enviar OTP por WhatsApp (Celery task)
-        # whatsapp_service.send_otp(session.phone_number, otp_code)
+        # Enviar OTP por WhatsApp
+        from apps.accounts.services.whatsapp_service import get_whatsapp_service
+        whatsapp_service = get_whatsapp_service()
+        whatsapp_service.send_otp(session.phone_number, otp_code)
 
-        # En desarrollo, mostramos el OTP en la respuesta
+        # Respuesta
         from django.conf import settings
         response_data = {
             'message': f'Código de verificación enviado a {data["phone_number"]}',
             'expires_in': 300  # 5 minutos
         }
 
-        if settings.DEBUG:
+        # En desarrollo/mock, mostramos el OTP en la respuesta
+        if settings.DEBUG or settings.WHATSAPP_PROVIDER == 'mock':
             response_data['debug_otp'] = otp_code
 
         return Response(response_data)
