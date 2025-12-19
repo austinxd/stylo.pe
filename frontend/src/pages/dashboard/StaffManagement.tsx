@@ -388,13 +388,6 @@ export default function StaffManagement() {
     ])
 
     const days = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
-    const defaultSchedule = days.map((name, i) => ({
-      day_of_week: i,
-      day_name: name,
-      start_time: '09:00',
-      end_time: '18:00',
-      is_working: false
-    }))
 
     const defaultBranchSchedule: BranchScheduleLimit[] = days.map((name, i) => ({
       day_of_week: i,
@@ -408,6 +401,18 @@ export default function StaffManagement() {
     const branchSchedule = branchScheduleResult.status === 'fulfilled'
       ? (branchScheduleResult.value.data.schedules || defaultBranchSchedule)
       : defaultBranchSchedule
+
+    // Crear horario por defecto del staff basado en el horario de la sucursal
+    const defaultSchedule = days.map((name, i) => {
+      const branchDay = branchSchedule.find((b: BranchScheduleLimit) => b.day_of_week === i)
+      return {
+        day_of_week: i,
+        day_name: name,
+        start_time: branchDay?.opening_time || '09:00',
+        end_time: branchDay?.closing_time || '18:00',
+        is_working: false
+      }
+    })
 
     // Si el staff no tiene horario configurado, usar el de la sucursal como default
     let staffSchedule = scheduleResult.status === 'fulfilled'
