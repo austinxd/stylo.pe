@@ -204,11 +204,31 @@ interface BranchFormData {
   cover_image?: File | null
 }
 
-// Pasos del wizard (reducidos de 4 a 3)
+interface DaySchedule {
+  day_of_week: number
+  day_name: string
+  opening_time: string
+  closing_time: string
+  is_open: boolean
+}
+
+// Pasos del wizard
 const STEPS = [
   { id: 1, title: 'Informacion y Fotos', icon: '1' },
   { id: 2, title: 'Ubicacion', icon: '2' },
-  { id: 3, title: 'Configuracion', icon: '3' },
+  { id: 3, title: 'Horarios', icon: '3' },
+  { id: 4, title: 'Configuracion', icon: '4' },
+]
+
+// Horarios por defecto (Lunes a Sábado abiertos)
+const DEFAULT_SCHEDULES: DaySchedule[] = [
+  { day_of_week: 0, day_name: 'Lunes', opening_time: '09:00', closing_time: '19:00', is_open: true },
+  { day_of_week: 1, day_name: 'Martes', opening_time: '09:00', closing_time: '19:00', is_open: true },
+  { day_of_week: 2, day_name: 'Miércoles', opening_time: '09:00', closing_time: '19:00', is_open: true },
+  { day_of_week: 3, day_name: 'Jueves', opening_time: '09:00', closing_time: '19:00', is_open: true },
+  { day_of_week: 4, day_name: 'Viernes', opening_time: '09:00', closing_time: '19:00', is_open: true },
+  { day_of_week: 5, day_name: 'Sábado', opening_time: '09:00', closing_time: '19:00', is_open: true },
+  { day_of_week: 6, day_name: 'Domingo', opening_time: '09:00', closing_time: '19:00', is_open: false },
 ]
 
 export default function BranchesManagement() {
@@ -250,6 +270,10 @@ export default function BranchesManagement() {
   const [isLoadingModalPhotos, setIsLoadingModalPhotos] = useState(false)
   const [isUploadingModalPhoto, setIsUploadingModalPhoto] = useState(false)
   const modalGalleryInputRef = useRef<HTMLInputElement>(null)
+  // Estado para horarios de la sucursal
+  const [branchSchedules, setBranchSchedules] = useState<DaySchedule[]>(DEFAULT_SCHEDULES)
+  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false)
+  const [isSavingSchedules, setIsSavingSchedules] = useState(false)
 
   // Obtener sucursales
   const { data: branches = [], isLoading, error } = useQuery<Branch[]>({
@@ -333,6 +357,17 @@ export default function BranchesManagement() {
       } finally {
         setIsLoadingModalPhotos(false)
       }
+      // Cargar horarios de la sucursal
+      setIsLoadingSchedules(true)
+      try {
+        const scheduleResponse = await apiClient.get(`/dashboard/branches/${branch.id}/schedule/`)
+        setBranchSchedules(scheduleResponse.data?.schedules || DEFAULT_SCHEDULES)
+      } catch (error) {
+        console.error('Error loading schedules:', error)
+        setBranchSchedules(DEFAULT_SCHEDULES)
+      } finally {
+        setIsLoadingSchedules(false)
+      }
     } else {
       setEditingBranch(null)
       setFormData({
@@ -353,6 +388,7 @@ export default function BranchesManagement() {
       setImagePreview(null)
       setMapCoords(null)
       setModalPhotos([])
+      setBranchSchedules(DEFAULT_SCHEDULES)
     }
     setErrors({})
     setCurrentStep(1)
@@ -366,6 +402,7 @@ export default function BranchesManagement() {
     setCurrentStep(1)
     setImagePreview(null)
     setModalPhotos([])
+    setBranchSchedules(DEFAULT_SCHEDULES)
     // Limpiar ref de imagen seleccionada
     selectedImageFileRef.current = null
   }
@@ -419,6 +456,29 @@ export default function BranchesManagement() {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
       alert(error.response?.data?.error || 'Error al marcar como portada')
+    }
+  }
+
+  // Funciones para manejar horarios
+  const updateDaySchedule = (dayOfWeek: number, field: keyof DaySchedule, value: string | boolean) => {
+    setBranchSchedules(prev => prev.map(day =>
+      day.day_of_week === dayOfWeek ? { ...day, [field]: value } : day
+    ))
+  }
+
+  const handleSaveSchedules = async () => {
+    if (!editingBranch) return
+
+    setIsSavingSchedules(true)
+    try {
+      await apiClient.put(`/dashboard/branches/${editingBranch.id}/schedule/`, {
+        schedules: branchSchedules
+      })
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Error al guardar horarios')
+    } finally {
+      setIsSavingSchedules(false)
     }
   }
 
@@ -1412,43 +1472,112 @@ export default function BranchesManagement() {
                   </div>
                 )}
 
-                {/* PASO 3: Horario y configuracion */}
+                {/* PASO 3: Horarios por día */}
                 {currentStep === 3 && (
-                  <div className="space-y-6">
-                    {/* Horario */}
-                    <div className="bg-gray-50 rounded-xl p-5">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                        <svg className="w-5 h-5 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                      <div className="flex items-start gap-3">
+                        <svg className="w-5 h-5 text-blue-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Horario de atencion
-                      </h4>
-                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Hora de apertura
-                          </label>
-                          <input
-                            type="time"
-                            value={formData.opening_time}
-                            onChange={(e) => setFormData({ ...formData, opening_time: e.target.value })}
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Hora de cierre
-                          </label>
-                          <input
-                            type="time"
-                            value={formData.closing_time}
-                            onChange={(e) => setFormData({ ...formData, closing_time: e.target.value })}
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
-                          />
+                          <p className="text-sm text-blue-800 font-medium">Horario de atención</p>
+                          <p className="text-xs text-blue-600 mt-0.5">Configura los días y horarios en que tu sucursal está abierta</p>
                         </div>
                       </div>
                     </div>
 
+                    {isLoadingSchedules ? (
+                      <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-[3px] border-gray-200 border-t-primary-600"></div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {branchSchedules.map((day) => (
+                          <div
+                            key={day.day_of_week}
+                            className={`p-4 rounded-xl border transition-all ${
+                              day.is_open
+                                ? 'bg-white border-primary-200'
+                                : 'bg-gray-50 border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-4">
+                              {/* Toggle día */}
+                              <label className="flex items-center cursor-pointer">
+                                <div className="relative">
+                                  <input
+                                    type="checkbox"
+                                    checked={day.is_open}
+                                    onChange={(e) => updateDaySchedule(day.day_of_week, 'is_open', e.target.checked)}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-primary-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+                                </div>
+                              </label>
+
+                              {/* Nombre del día */}
+                              <span className={`font-medium w-24 ${day.is_open ? 'text-gray-900' : 'text-gray-400'}`}>
+                                {day.day_name}
+                              </span>
+
+                              {/* Horarios */}
+                              {day.is_open ? (
+                                <div className="flex items-center gap-2 flex-1">
+                                  <input
+                                    type="time"
+                                    value={day.opening_time}
+                                    onChange={(e) => updateDaySchedule(day.day_of_week, 'opening_time', e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                  />
+                                  <span className="text-gray-400">-</span>
+                                  <input
+                                    type="time"
+                                    value={day.closing_time}
+                                    onChange={(e) => updateDaySchedule(day.day_of_week, 'closing_time', e.target.value)}
+                                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-400 italic">Cerrado</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Botón guardar horarios (solo al editar) */}
+                    {editingBranch && (
+                      <div className="flex justify-end pt-4">
+                        <button
+                          type="button"
+                          onClick={handleSaveSchedules}
+                          disabled={isSavingSchedules}
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors text-sm font-medium"
+                        >
+                          {isSavingSchedules ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              Guardando...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Guardar horarios
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* PASO 4: Configuracion */}
+                {currentStep === 4 && (
+                  <div className="space-y-6">
                     {/* Estado */}
                     <div className="bg-gray-50 rounded-xl p-5">
                       <h4 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1486,7 +1615,7 @@ export default function BranchesManagement() {
                       <div className="space-y-2 text-sm">
                         <p><span className="font-medium text-green-900">Nombre:</span> <span className="text-green-700">{formData.name || '-'}</span></p>
                         <p><span className="font-medium text-green-900">Direccion:</span> <span className="text-green-700">{formData.address || '-'}</span></p>
-                        <p><span className="font-medium text-green-900">Horario:</span> <span className="text-green-700">{formData.opening_time} - {formData.closing_time}</span></p>
+                        <p><span className="font-medium text-green-900">Dias abiertos:</span> <span className="text-green-700">{branchSchedules.filter(d => d.is_open).map(d => d.day_name.slice(0, 3)).join(', ') || 'Ninguno'}</span></p>
                         <p><span className="font-medium text-green-900">Estado:</span> <span className={formData.is_active ? 'text-green-700' : 'text-orange-600'}>{formData.is_active ? 'Activa' : 'Inactiva'}</span></p>
                       </div>
                     </div>

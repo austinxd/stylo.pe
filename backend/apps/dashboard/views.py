@@ -507,6 +507,90 @@ class DashboardBranchViewSet(viewsets.ModelViewSet):
         # Continuar con el update normal para los demás campos
         return super().update(request, *args, **kwargs)
 
+    @action(detail=True, methods=['get', 'put'])
+    def schedule(self, request, pk=None):
+        """
+        Obtiene o actualiza el horario de atención de la sucursal.
+
+        GET: Retorna los 7 días con su configuración
+        PUT: Actualiza el horario completo
+             Recibe: { schedules: [{day_of_week: 0, opening_time: "09:00", closing_time: "18:00", is_open: true}, ...] }
+        """
+        from apps.scheduling.models import BranchSchedule
+
+        branch = self.get_object()
+        days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+
+        if request.method == 'GET':
+            schedules = BranchSchedule.objects.filter(branch=branch).order_by('day_of_week')
+            schedule_dict = {s.day_of_week: s for s in schedules}
+
+            result = []
+            for day_num in range(7):
+                if day_num in schedule_dict:
+                    s = schedule_dict[day_num]
+                    result.append({
+                        'day_of_week': day_num,
+                        'day_name': days[day_num],
+                        'opening_time': s.opening_time.strftime('%H:%M') if s.opening_time else '09:00',
+                        'closing_time': s.closing_time.strftime('%H:%M') if s.closing_time else '19:00',
+                        'is_open': s.is_open
+                    })
+                else:
+                    result.append({
+                        'day_of_week': day_num,
+                        'day_name': days[day_num],
+                        'opening_time': '09:00',
+                        'closing_time': '19:00',
+                        'is_open': False
+                    })
+
+            return Response({'schedules': result})
+
+        # PUT - actualizar horarios
+        schedules_data = request.data.get('schedules', [])
+
+        for schedule_item in schedules_data:
+            day_of_week = schedule_item.get('day_of_week')
+            if day_of_week is None or day_of_week < 0 or day_of_week > 6:
+                continue
+
+            BranchSchedule.objects.update_or_create(
+                branch=branch,
+                day_of_week=day_of_week,
+                defaults={
+                    'opening_time': schedule_item.get('opening_time', '09:00'),
+                    'closing_time': schedule_item.get('closing_time', '19:00'),
+                    'is_open': schedule_item.get('is_open', False)
+                }
+            )
+
+        # Retornar horarios actualizados
+        schedules = BranchSchedule.objects.filter(branch=branch).order_by('day_of_week')
+        schedule_dict = {s.day_of_week: s for s in schedules}
+
+        result = []
+        for day_num in range(7):
+            if day_num in schedule_dict:
+                s = schedule_dict[day_num]
+                result.append({
+                    'day_of_week': day_num,
+                    'day_name': days[day_num],
+                    'opening_time': s.opening_time.strftime('%H:%M') if s.opening_time else '09:00',
+                    'closing_time': s.closing_time.strftime('%H:%M') if s.closing_time else '19:00',
+                    'is_open': s.is_open
+                })
+            else:
+                result.append({
+                    'day_of_week': day_num,
+                    'day_name': days[day_num],
+                    'opening_time': '09:00',
+                    'closing_time': '19:00',
+                    'is_open': False
+                })
+
+        return Response({'schedules': result, 'message': 'Horarios actualizados correctamente'})
+
     @action(detail=True, methods=['get'])
     def staff(self, request, pk=None):
         """Obtiene los profesionales de una sucursal específica."""
