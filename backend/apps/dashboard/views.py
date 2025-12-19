@@ -857,31 +857,34 @@ class DashboardStaffViewSet(viewsets.ModelViewSet):
             is_verified=False
         )
 
-        # Manejar photo desde request.FILES
-        photo = self.request.FILES.get('photo')
-        if photo:
-            staff = serializer.save(user=user, created_by_admin=True, photo=photo)
-            print(f"[DEBUG] Staff creado con foto")
-        else:
-            staff = serializer.save(user=user, created_by_admin=True)
-            print(f"[DEBUG] Staff creado SIN foto")
-
-        # Crear StaffSubscription para el trial del nuevo profesional
-        # Obtener el business de las sucursales asignadas
+        # Obtener el business de las sucursales asignadas ANTES de crear
         branch_ids = self.request.data.getlist('branch_ids', [])
         if not branch_ids:
             branch_ids = self.request.data.get('branch_ids', [])
+
+        business = None
         if branch_ids:
             first_branch = Branch.objects.filter(id=branch_ids[0]).first()
             if first_branch:
                 business = first_branch.business
-                # Crear suscripción con trial (trial_ends_at se calcula automáticamente)
-                StaffSubscription.objects.get_or_create(
-                    business=business,
-                    staff=staff,
-                    defaults={'is_active': True}
-                )
-                print(f"[DEBUG] StaffSubscription creada para {staff.full_name} en {business.name}")
+
+        # Manejar photo desde request.FILES
+        photo = self.request.FILES.get('photo')
+        if photo:
+            staff = serializer.save(user=user, created_by_admin=True, photo=photo, current_business=business)
+            print(f"[DEBUG] Staff creado con foto")
+        else:
+            staff = serializer.save(user=user, created_by_admin=True, current_business=business)
+            print(f"[DEBUG] Staff creado SIN foto")
+
+        # Crear StaffSubscription para el trial del nuevo profesional
+        if business:
+            StaffSubscription.objects.get_or_create(
+                business=business,
+                staff=staff,
+                defaults={'is_active': True}
+            )
+            print(f"[DEBUG] StaffSubscription creada para {staff.full_name} en {business.name}")
 
     def partial_update(self, request, *args, **kwargs):
         """Override para manejar archivos correctamente en PATCH."""
