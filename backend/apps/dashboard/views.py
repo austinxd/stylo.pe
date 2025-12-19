@@ -550,20 +550,40 @@ class DashboardBranchViewSet(viewsets.ModelViewSet):
         # PUT - actualizar horarios
         schedules_data = request.data.get('schedules', [])
 
+        # Variables para actualizar el horario general del Branch
+        first_open_day = None
+
         for schedule_item in schedules_data:
             day_of_week = schedule_item.get('day_of_week')
             if day_of_week is None or day_of_week < 0 or day_of_week > 6:
                 continue
 
+            opening_time = schedule_item.get('opening_time', '09:00')
+            closing_time = schedule_item.get('closing_time', '19:00')
+            is_open = schedule_item.get('is_open', False)
+
             BranchSchedule.objects.update_or_create(
                 branch=branch,
                 day_of_week=day_of_week,
                 defaults={
-                    'opening_time': schedule_item.get('opening_time', '09:00'),
-                    'closing_time': schedule_item.get('closing_time', '19:00'),
-                    'is_open': schedule_item.get('is_open', False)
+                    'opening_time': opening_time,
+                    'closing_time': closing_time,
+                    'is_open': is_open
                 }
             )
+
+            # Guardar el primer día abierto para usarlo como horario general
+            if is_open and first_open_day is None:
+                first_open_day = {
+                    'opening_time': opening_time,
+                    'closing_time': closing_time
+                }
+
+        # Actualizar opening_time y closing_time del Branch con el primer día abierto
+        if first_open_day:
+            branch.opening_time = first_open_day['opening_time']
+            branch.closing_time = first_open_day['closing_time']
+            branch.save(update_fields=['opening_time', 'closing_time'])
 
         # Retornar horarios actualizados
         schedules = BranchSchedule.objects.filter(branch=branch).order_by('day_of_week')
