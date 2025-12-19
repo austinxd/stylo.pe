@@ -430,25 +430,17 @@ export default function StaffManagement() {
       let startTime = day.start_time
       let endTime = day.end_time
 
-      // Si el día no está activo o tiene valores por defecto (09:00 como inicio),
-      // usar el horario completo de la sucursal
-      const hasDefaultStart = startTime === '09:00' && branchDay.opening_time !== '09:00'
-      if (!day.is_working || hasDefaultStart) {
+      // Ajustar start_time y end_time para que estén dentro del rango de la sucursal
+      if (startTime < branchDay.opening_time) {
+        startTime = branchDay.opening_time
+      }
+      if (endTime > branchDay.closing_time) {
+        endTime = branchDay.closing_time
+      }
+      // Si después del ajuste, end_time es menor o igual a start_time, usar todo el rango
+      if (endTime <= startTime) {
         startTime = branchDay.opening_time
         endTime = branchDay.closing_time
-      } else {
-        // Ajustar start_time y end_time para que estén dentro del rango de la sucursal
-        if (startTime < branchDay.opening_time) {
-          startTime = branchDay.opening_time
-        }
-        if (endTime > branchDay.closing_time) {
-          endTime = branchDay.closing_time
-        }
-        // Si después del ajuste, end_time es menor o igual a start_time, usar todo el rango
-        if (endTime <= startTime) {
-          startTime = branchDay.opening_time
-          endTime = branchDay.closing_time
-        }
       }
 
       return { ...day, start_time: startTime, end_time: endTime }
@@ -733,13 +725,30 @@ export default function StaffManagement() {
     setBranchTabsData(prev => {
       const tabData = prev[activeBranchTab]
       if (!tabData) return prev
+
+      // Obtener horario de la sucursal para este día
+      const branchDay = tabData.branchSchedule?.find(b => b.day_of_week === dayOfWeek)
+      const branchOpen = branchDay?.opening_time || '09:00'
+      const branchClose = branchDay?.closing_time || '18:00'
+
       return {
         ...prev,
         [activeBranchTab]: {
           ...tabData,
-          schedule: tabData.schedule.map(day =>
-            day.day_of_week === dayOfWeek ? { ...day, is_working: !day.is_working } : day
-          )
+          schedule: tabData.schedule.map(day => {
+            if (day.day_of_week !== dayOfWeek) return day
+            const isEnabling = !day.is_working
+            // Al activar un día, usar horarios de la sucursal por defecto
+            if (isEnabling) {
+              return {
+                ...day,
+                is_working: true,
+                start_time: branchOpen,
+                end_time: branchClose
+              }
+            }
+            return { ...day, is_working: false }
+          })
         }
       }
     })
