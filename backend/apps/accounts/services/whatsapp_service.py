@@ -2,6 +2,7 @@
 Servicio de envío de mensajes WhatsApp.
 Soporta múltiples proveedores: mock, twilio, meta.
 """
+import sys
 import logging
 from abc import ABC, abstractmethod
 from django.conf import settings
@@ -37,9 +38,10 @@ class MockWhatsAppProvider(WhatsAppProvider):
     """Proveedor mock para desarrollo. Solo loguea los mensajes."""
 
     def send_otp(self, phone_number: str, otp_code: str) -> dict:
-        message = f"[MOCK WhatsApp] Enviando OTP {otp_code} a {phone_number}"
-        logger.info(message)
-        print(message)  # Para verlo en consola durante desarrollo
+        message = f"\n{'='*50}\n[MOCK WhatsApp] OTP: {otp_code} -> {phone_number}\n{'='*50}\n"
+        logger.warning(message)  # WARNING para que siempre aparezca
+        sys.stderr.write(message)
+        sys.stderr.flush()
         return {
             'success': True,
             'error': None,
