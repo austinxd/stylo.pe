@@ -103,6 +103,15 @@ interface DaySchedule {
   is_working: boolean
 }
 
+// Horario de la sucursal (límites)
+interface BranchScheduleLimit {
+  day_of_week: number
+  day_name: string
+  opening_time: string
+  closing_time: string
+  is_open: boolean
+}
+
 // Datos de sucursal para el modal unificado
 interface BranchTabData {
   branchId: number
@@ -110,6 +119,7 @@ interface BranchTabData {
   services: AvailableBranchService[]
   selectedServiceIds: number[]
   schedule: DaySchedule[]
+  branchSchedule: BranchScheduleLimit[] // Horario de la sucursal (límites)
   isLoadingServices: boolean
   isLoadingSchedule: boolean
 }
@@ -352,7 +362,7 @@ export default function StaffManagement() {
     },
   })
 
-  // Cargar datos de una sucursal para el tab (servicios + horarios)
+  // Cargar datos de una sucursal para el tab (servicios + horarios del staff + horarios de la sucursal)
   const loadBranchTabData = async (staffId: number, branchId: number, branchName: string) => {
     // Marcar como cargando
     setBranchTabsData(prev => ({
@@ -364,15 +374,17 @@ export default function StaffManagement() {
         services: prev[branchId]?.services || [],
         selectedServiceIds: prev[branchId]?.selectedServiceIds || [],
         schedule: prev[branchId]?.schedule || [],
+        branchSchedule: prev[branchId]?.branchSchedule || [],
         isLoadingServices: true,
         isLoadingSchedule: true,
       }
     }))
 
-    // Cargar servicios y horarios en paralelo
-    const [servicesResult, scheduleResult] = await Promise.allSettled([
+    // Cargar servicios, horarios del staff y horarios de la sucursal en paralelo
+    const [servicesResult, scheduleResult, branchScheduleResult] = await Promise.allSettled([
       apiClient.get<StaffServicesData>(`/dashboard/staff/${staffId}/services/`, { params: { branch_id: branchId } }),
-      apiClient.get(`/dashboard/staff/${staffId}/schedule/`, { params: { branch_id: branchId } })
+      apiClient.get(`/dashboard/staff/${staffId}/schedule/`, { params: { branch_id: branchId } }),
+      apiClient.get(`/dashboard/branches/${branchId}/schedule/`)
     ])
 
     const days = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado', 'Domingo']
@@ -384,6 +396,34 @@ export default function StaffManagement() {
       is_working: false
     }))
 
+    const defaultBranchSchedule: BranchScheduleLimit[] = days.map((name, i) => ({
+      day_of_week: i,
+      day_name: name,
+      opening_time: '09:00',
+      closing_time: '19:00',
+      is_open: true
+    }))
+
+    // Obtener horario de la sucursal para usar como límites
+    const branchSchedule = branchScheduleResult.status === 'fulfilled'
+      ? (branchScheduleResult.value.data.schedules || defaultBranchSchedule)
+      : defaultBranchSchedule
+
+    // Si el staff no tiene horario configurado, usar el de la sucursal como default
+    let staffSchedule = scheduleResult.status === 'fulfilled'
+      ? (scheduleResult.value.data.schedules || defaultSchedule)
+      : defaultSchedule
+
+    // Ajustar horarios del staff para que no excedan los de la sucursal
+    staffSchedule = staffSchedule.map((day: DaySchedule) => {
+      const branchDay = branchSchedule.find((b: BranchScheduleLimit) => b.day_of_week === day.day_of_week)
+      if (!branchDay || !branchDay.is_open) {
+        // Si la sucursal está cerrada ese día, el staff no puede trabajar
+        return { ...day, is_working: false }
+      }
+      return day
+    })
+
     setBranchTabsData(prev => ({
       ...prev,
       [branchId]: {
@@ -391,7 +431,8 @@ export default function StaffManagement() {
         branchName,
         services: servicesResult.status === 'fulfilled' ? servicesResult.value.data.available_services : [],
         selectedServiceIds: servicesResult.status === 'fulfilled' ? servicesResult.value.data.assigned_service_ids : [],
-        schedule: scheduleResult.status === 'fulfilled' ? (scheduleResult.value.data.schedules || defaultSchedule) : defaultSchedule,
+        schedule: staffSchedule,
+        branchSchedule: branchSchedule,
         isLoadingServices: false,
         isLoadingSchedule: false,
       }
@@ -1447,50 +1488,83 @@ export default function StaffManagement() {
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          {branchTabsData[activeBranchTab].schedule.map((day) => (
-                            <div key={day.day_of_week} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
-                              <label className="flex items-center gap-2 w-24 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={day.is_working}
-                                  onChange={() => toggleBranchScheduleDay(day.day_of_week)}
-                                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-                                />
-                                <span className={`text-sm ${day.is_working ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
-                                  {day.day_name}
-                                </span>
-                              </label>
-                              {day.is_working ? (
-                                <div className="flex items-center gap-2 flex-1">
-                                  <select
-                                    value={day.start_time}
-                                    onChange={(e) => updateBranchScheduleTime(day.day_of_week, 'start_time', e.target.value)}
-                                    className="px-2 py-1 border border-gray-200 rounded text-sm"
-                                  >
-                                    {Array.from({ length: 48 }, (_, i) => {
-                                      const hour = Math.floor(i / 2).toString().padStart(2, '0')
-                                      const min = i % 2 === 0 ? '00' : '30'
-                                      return <option key={i} value={`${hour}:${min}`}>{`${hour}:${min}`}</option>
-                                    })}
-                                  </select>
-                                  <span className="text-gray-400">a</span>
-                                  <select
-                                    value={day.end_time}
-                                    onChange={(e) => updateBranchScheduleTime(day.day_of_week, 'end_time', e.target.value)}
-                                    className="px-2 py-1 border border-gray-200 rounded text-sm"
-                                  >
-                                    {Array.from({ length: 48 }, (_, i) => {
-                                      const hour = Math.floor(i / 2).toString().padStart(2, '0')
-                                      const min = i % 2 === 0 ? '00' : '30'
-                                      return <option key={i} value={`${hour}:${min}`}>{`${hour}:${min}`}</option>
-                                    })}
-                                  </select>
-                                </div>
-                              ) : (
-                                <span className="text-sm text-gray-400 italic">Descansa</span>
-                              )}
-                            </div>
-                          ))}
+                          {branchTabsData[activeBranchTab].schedule.map((day) => {
+                            // Obtener límites de la sucursal para este día
+                            const branchDay = branchTabsData[activeBranchTab].branchSchedule?.find(
+                              (b) => b.day_of_week === day.day_of_week
+                            )
+                            const branchOpen = branchDay?.opening_time || '00:00'
+                            const branchClose = branchDay?.closing_time || '23:30'
+                            const isBranchOpen = branchDay?.is_open !== false
+
+                            // Generar opciones de tiempo filtradas por horario de sucursal
+                            const generateTimeOptions = (minTime: string, maxTime: string) => {
+                              const options = []
+                              for (let i = 0; i < 48; i++) {
+                                const hour = Math.floor(i / 2).toString().padStart(2, '0')
+                                const min = i % 2 === 0 ? '00' : '30'
+                                const time = `${hour}:${min}`
+                                if (time >= minTime && time <= maxTime) {
+                                  options.push({ value: time, label: time })
+                                }
+                              }
+                              return options
+                            }
+
+                            const timeOptions = generateTimeOptions(branchOpen, branchClose)
+
+                            return (
+                              <div key={day.day_of_week} className={`flex items-center gap-3 p-2 rounded-lg ${isBranchOpen ? 'bg-gray-50' : 'bg-red-50'}`}>
+                                <label className={`flex items-center gap-2 w-28 ${isBranchOpen ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={day.is_working && isBranchOpen}
+                                    onChange={() => isBranchOpen && toggleBranchScheduleDay(day.day_of_week)}
+                                    disabled={!isBranchOpen}
+                                    className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500 disabled:opacity-50"
+                                  />
+                                  <span className={`text-sm ${day.is_working && isBranchOpen ? 'text-gray-900 font-medium' : 'text-gray-400'}`}>
+                                    {day.day_name}
+                                  </span>
+                                </label>
+                                {!isBranchOpen ? (
+                                  <span className="text-sm text-red-500 italic">Sucursal cerrada</span>
+                                ) : day.is_working ? (
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <select
+                                      value={day.start_time}
+                                      onChange={(e) => updateBranchScheduleTime(day.day_of_week, 'start_time', e.target.value)}
+                                      className="px-2 py-1 border border-gray-200 rounded text-sm"
+                                    >
+                                      {timeOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                      ))}
+                                    </select>
+                                    <span className="text-gray-400">a</span>
+                                    <select
+                                      value={day.end_time}
+                                      onChange={(e) => updateBranchScheduleTime(day.day_of_week, 'end_time', e.target.value)}
+                                      className="px-2 py-1 border border-gray-200 rounded text-sm"
+                                    >
+                                      {timeOptions.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                      ))}
+                                    </select>
+                                    <span className="text-xs text-gray-400 ml-2">
+                                      (Sucursal: {branchOpen} - {branchClose})
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <span className="text-sm text-gray-400 italic">Descansa</span>
+                                    <span className="text-xs text-gray-400 ml-auto">
+                                      (Sucursal: {branchOpen} - {branchClose})
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
