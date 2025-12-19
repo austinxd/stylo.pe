@@ -84,6 +84,8 @@ class AvailabilityView(APIView):
         availability_service = AvailabilityService(branch)
         slots = availability_service.get_available_slots(service, staff, date)
 
+        # Convertir slots a hora local (Lima) sin offset para consistencia
+        from django.utils.timezone import localtime
         return Response({
             'date': date,
             'service': {
@@ -98,7 +100,8 @@ class AvailabilityView(APIView):
             } if staff else None,
             'slots': [
                 {
-                    'datetime': slot['datetime'].isoformat(),
+                    # Usar formato sin timezone para evitar problemas de parsing en frontend
+                    'datetime': localtime(slot['datetime']).strftime('%Y-%m-%dT%H:%M:%S'),
                     'staff_id': slot['staff_id'],
                     'staff_name': slot['staff_name']
                 }
