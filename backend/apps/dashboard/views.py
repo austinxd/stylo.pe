@@ -15,6 +15,7 @@ from apps.accounts.models import StaffMember, Client
 from apps.services.models import Service, ServiceCategory, StaffService
 from apps.appointments.models import Appointment
 from apps.scheduling.models import WorkSchedule, BlockedTime
+from apps.subscriptions.models import StaffSubscription
 from common.permissions import IsBusinessOwner, IsBranchManager
 from .serializers import (
     DashboardBranchSerializer,
@@ -859,11 +860,28 @@ class DashboardStaffViewSet(viewsets.ModelViewSet):
         # Manejar photo desde request.FILES
         photo = self.request.FILES.get('photo')
         if photo:
-            serializer.save(user=user, created_by_admin=True, photo=photo)
+            staff = serializer.save(user=user, created_by_admin=True, photo=photo)
             print(f"[DEBUG] Staff creado con foto")
         else:
-            serializer.save(user=user, created_by_admin=True)
+            staff = serializer.save(user=user, created_by_admin=True)
             print(f"[DEBUG] Staff creado SIN foto")
+
+        # Crear StaffSubscription para el trial del nuevo profesional
+        # Obtener el business de las sucursales asignadas
+        branch_ids = self.request.data.getlist('branch_ids', [])
+        if not branch_ids:
+            branch_ids = self.request.data.get('branch_ids', [])
+        if branch_ids:
+            first_branch = Branch.objects.filter(id=branch_ids[0]).first()
+            if first_branch:
+                business = first_branch.business
+                # Crear suscripción con trial (trial_ends_at se calcula automáticamente)
+                StaffSubscription.objects.get_or_create(
+                    business=business,
+                    staff=staff,
+                    defaults={'is_active': True}
+                )
+                print(f"[DEBUG] StaffSubscription creada para {staff.full_name} en {business.name}")
 
     def partial_update(self, request, *args, **kwargs):
         """Override para manejar archivos correctamente en PATCH."""
@@ -1675,6 +1693,13 @@ class OnboardingCompleteView(APIView):
                         is_active=True,
                     )
                     staff_created.branches.add(branch)
+
+                    # Crear StaffSubscription para el trial del nuevo profesional
+                    StaffSubscription.objects.get_or_create(
+                        business=business,
+                        staff=staff_created,
+                        defaults={'is_active': True}
+                    )
 
                     # Copiar horarios de sucursal al staff (de BranchSchedule a WorkSchedule)
                     for branch_schedule in branch.schedules.filter(is_open=True):
