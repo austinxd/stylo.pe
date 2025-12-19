@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core.files.base import ContentFile
 
 
-DNI_API_URL = "https://casaaustin.pe/datos/api.php"
+DNI_API_URL = "https://api.casaaustin.pe/api/v1/reniec/lookup/public/"
 
 
 class DNIService:
