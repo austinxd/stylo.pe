@@ -617,8 +617,8 @@ export default function BranchesManagement() {
     submitData.append('city', formData.city)
     submitData.append('phone', formData.phone)
     submitData.append('email', formData.email)
-    submitData.append('opening_time', formData.opening_time)
-    submitData.append('closing_time', formData.closing_time)
+    // opening_time y closing_time se manejan via el endpoint de schedule (Paso 3)
+    // No los enviamos aquí para evitar sobrescribir los valores
     submitData.append('is_active', String(formData.is_active))
     if (latitude) submitData.append('latitude', String(latitude))
     if (longitude) submitData.append('longitude', String(longitude))
