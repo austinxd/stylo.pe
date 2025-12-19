@@ -2408,8 +2408,9 @@ export default function BookingFlow() {
                 </div>
               ) : availability?.slots && availability.slots.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-                  {/* Deduplicar slots por hora (evitar mostrar múltiples staff para la misma hora) */}
-                  {availability.slots
+                  {/* Ordenar y deduplicar slots por hora */}
+                  {[...availability.slots]
+                    .sort((a, b) => a.datetime.localeCompare(b.datetime))
                     .filter((slot, index, self) => {
                       const timeStr = slot.datetime.split('T')[1]?.slice(0, 5)
                       return index === self.findIndex(s => s.datetime.split('T')[1]?.slice(0, 5) === timeStr)
