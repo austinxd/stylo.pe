@@ -475,7 +475,7 @@ export default function StaffManagement() {
     }
   }
 
-  // DNI lookup for auto-fill form
+  // DNI lookup for auto-fill form - llamada directa a API pública (evita rate limit del proxy)
   const handleDNILookup = async (dni: string) => {
     // Only lookup for DNI type with 8 digits
     if (lookupData.document_type !== 'dni' || dni.replace(/\D/g, '').length !== 8) {
@@ -484,10 +484,20 @@ export default function StaffManagement() {
 
     setIsDNILookingUp(true)
     try {
-      const response = await apiClient.post<DNILookupResult>('/dashboard/staff/lookup-dni/', { dni })
-      const result = response.data
+      // Llamada directa a la API pública de RENIEC (sin proxy)
+      const response = await fetch(`https://api.casaaustin.pe/api/v1/reniec/lookup/public/?dni=${dni}`)
+      const data = await response.json()
 
-      if (result.found) {
+      if (data && data.data) {
+        const personData = data.data
+        const result: DNILookupResult = {
+          found: true,
+          first_name: personData.preNombres || '',
+          last_name_paterno: personData.apePaterno || '',
+          last_name_materno: personData.apeMaterno || '',
+          photo_base64: personData.imagen_foto || undefined,
+        }
+
         // Auto-fill form data
         setFormData(prev => ({
           ...prev,
