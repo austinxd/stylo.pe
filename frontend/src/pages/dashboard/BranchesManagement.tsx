@@ -487,14 +487,18 @@ export default function BranchesManagement() {
     if (validateStep(currentStep)) {
       // Auto-guardar horarios al salir del paso 3 (solo si estamos editando)
       if (currentStep === 3 && editingBranch) {
+        console.log('[Schedule] Guardando horarios para branch:', editingBranch.id)
+        console.log('[Schedule] Datos a enviar:', JSON.stringify(branchSchedules, null, 2))
         setIsSavingSchedules(true)
         try {
-          await apiClient.put(`/dashboard/branches/${editingBranch.id}/schedule/`, {
+          const response = await apiClient.put(`/dashboard/branches/${editingBranch.id}/schedule/`, {
             schedules: branchSchedules
           })
+          console.log('[Schedule] Respuesta del servidor:', response.data)
           queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
         } catch (error: any) {
-          console.error('Error guardando horarios:', error)
+          console.error('[Schedule] Error guardando horarios:', error)
+          console.error('[Schedule] Response data:', error.response?.data)
         } finally {
           setIsSavingSchedules(false)
         }
