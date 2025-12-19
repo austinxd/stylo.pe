@@ -220,8 +220,8 @@ class PublicBookingViewSet(viewsets.ViewSet):
         session.save()
 
         # Enviar OTP por WhatsApp
-        from apps.accounts.services.whatsapp_service import get_whatsapp_service
-        whatsapp_service = get_whatsapp_service()
+        from apps.accounts.services.whatsapp_service import WhatsAppService
+        whatsapp_service = WhatsAppService()
         whatsapp_service.send_otp(session.phone_number, otp_code)
 
         # Respuesta
