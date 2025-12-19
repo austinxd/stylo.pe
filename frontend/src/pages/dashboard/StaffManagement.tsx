@@ -427,21 +427,28 @@ export default function StaffManagement() {
         return { ...day, is_working: false }
       }
 
-      // Ajustar start_time y end_time para que estén dentro del rango de la sucursal
       let startTime = day.start_time
       let endTime = day.end_time
 
-      // Si el horario del staff está fuera del rango de la sucursal, ajustarlo
-      if (startTime < branchDay.opening_time) {
-        startTime = branchDay.opening_time
-      }
-      if (endTime > branchDay.closing_time) {
-        endTime = branchDay.closing_time
-      }
-      // Si después del ajuste, end_time es menor o igual a start_time, usar todo el rango de la sucursal
-      if (endTime <= startTime) {
+      // Si el día no está activo o tiene los valores por defecto antiguos (09:00-18:00),
+      // usar el horario completo de la sucursal
+      const isOldDefault = startTime === '09:00' && endTime === '18:00'
+      if (!day.is_working || isOldDefault) {
         startTime = branchDay.opening_time
         endTime = branchDay.closing_time
+      } else {
+        // Ajustar start_time y end_time para que estén dentro del rango de la sucursal
+        if (startTime < branchDay.opening_time) {
+          startTime = branchDay.opening_time
+        }
+        if (endTime > branchDay.closing_time) {
+          endTime = branchDay.closing_time
+        }
+        // Si después del ajuste, end_time es menor o igual a start_time, usar todo el rango
+        if (endTime <= startTime) {
+          startTime = branchDay.opening_time
+          endTime = branchDay.closing_time
+        }
       }
 
       return { ...day, start_time: startTime, end_time: endTime }
