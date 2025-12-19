@@ -466,22 +466,6 @@ export default function BranchesManagement() {
     ))
   }
 
-  const handleSaveSchedules = async () => {
-    if (!editingBranch) return
-
-    setIsSavingSchedules(true)
-    try {
-      await apiClient.put(`/dashboard/branches/${editingBranch.id}/schedule/`, {
-        schedules: branchSchedules
-      })
-      queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al guardar horarios')
-    } finally {
-      setIsSavingSchedules(false)
-    }
-  }
-
   // Validacion por paso
   const validateStep = (step: number): boolean => {
     const newErrors: Record<string, string> = {}
@@ -499,8 +483,22 @@ export default function BranchesManagement() {
     return Object.keys(newErrors).length === 0
   }
 
-  const nextStep = () => {
+  const nextStep = async () => {
     if (validateStep(currentStep)) {
+      // Auto-guardar horarios al salir del paso 3 (solo si estamos editando)
+      if (currentStep === 3 && editingBranch) {
+        setIsSavingSchedules(true)
+        try {
+          await apiClient.put(`/dashboard/branches/${editingBranch.id}/schedule/`, {
+            schedules: branchSchedules
+          })
+          queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
+        } catch (error: any) {
+          console.error('Error guardando horarios:', error)
+        } finally {
+          setIsSavingSchedules(false)
+        }
+      }
       setCurrentStep((prev) => Math.min(prev + 1, STEPS.length))
     }
   }
@@ -1547,30 +1545,11 @@ export default function BranchesManagement() {
                       </div>
                     )}
 
-                    {/* Botón guardar horarios (solo al editar) */}
+                    {/* Nota: Los horarios se guardan automáticamente al hacer clic en Siguiente */}
                     {editingBranch && (
-                      <div className="flex justify-end pt-4">
-                        <button
-                          type="button"
-                          onClick={handleSaveSchedules}
-                          disabled={isSavingSchedules}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors text-sm font-medium"
-                        >
-                          {isSavingSchedules ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              Guardando...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Guardar horarios
-                            </>
-                          )}
-                        </button>
-                      </div>
+                      <p className="text-xs text-gray-500 text-center pt-2">
+                        Los horarios se guardan automáticamente al continuar
+                      </p>
                     )}
                   </div>
                 )}
@@ -1640,11 +1619,20 @@ export default function BranchesManagement() {
                     Cancelar
                   </Button>
                   {currentStep < STEPS.length ? (
-                    <Button type="button" onClick={nextStep}>
-                      Siguiente
-                      <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
+                    <Button type="button" onClick={nextStep} disabled={isSavingSchedules}>
+                      {isSavingSchedules ? (
+                        <>
+                          <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          Siguiente
+                          <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </>
+                      )}
                     </Button>
                   ) : (
                     <Button type="submit" disabled={isGeocoding}>
