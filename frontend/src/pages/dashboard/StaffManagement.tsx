@@ -430,10 +430,10 @@ export default function StaffManagement() {
       let startTime = day.start_time
       let endTime = day.end_time
 
-      // Si el día no está activo o tiene los valores por defecto antiguos (09:00-18:00),
+      // Si el día no está activo o tiene valores por defecto (09:00 como inicio),
       // usar el horario completo de la sucursal
-      const isOldDefault = startTime === '09:00' && endTime === '18:00'
-      if (!day.is_working || isOldDefault) {
+      const hasDefaultStart = startTime === '09:00' && branchDay.opening_time !== '09:00'
+      if (!day.is_working || hasDefaultStart) {
         startTime = branchDay.opening_time
         endTime = branchDay.closing_time
       } else {
