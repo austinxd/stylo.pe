@@ -202,14 +202,29 @@ export const bookingApi = {
 
   /**
    * Buscar datos de persona en RENIEC por DNI
-   * Útil para autocompletar el formulario cuando el cliente es nuevo
+   * Llamada directa a API pública (evita rate limit del proxy)
    */
   lookupReniec: async (data: LookupReniecRequest): Promise<LookupReniecResponse> => {
-    const response = await apiClient.post<LookupReniecResponse>(
-      '/appointments/booking/lookup-reniec/',
-      data
-    )
-    return response.data
+    try {
+      const response = await fetch(`https://api.casaaustin.pe/api/v1/reniec/lookup/public/?dni=${data.dni}`)
+      const result = await response.json()
+
+      if (result && result.data) {
+        const personData = result.data
+        return {
+          found: true,
+          first_name: personData.preNombres || '',
+          last_name_paterno: personData.apePaterno || '',
+          last_name_materno: personData.apeMaterno || '',
+          birth_date: personData.feNacimiento || null,
+          gender: personData.sexo?.toLowerCase() === 'm' ? 'M' : personData.sexo?.toLowerCase() === 'f' ? 'F' : undefined,
+        }
+      }
+      return { found: false }
+    } catch (error) {
+      console.error('Error looking up RENIEC:', error)
+      return { found: false, error: 'Error de conexión' }
+    }
   },
 }
 
