@@ -144,23 +144,25 @@ class StaffMemberSerializer(serializers.ModelSerializer):
     """Serializer para profesionales."""
     branch_name = serializers.CharField(source='branch.name', read_only=True)
     business_name = serializers.CharField(source='branch.business.name', read_only=True)
+    full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = StaffMember
         fields = [
-            'id', 'first_name', 'last_name', 'photo', 'bio',
-            'specialty', 'branch', 'branch_name', 'business_name',
-            'is_active', 'created_at'
+            'id', 'first_name', 'last_name_paterno', 'last_name_materno',
+            'full_name', 'photo', 'bio', 'specialty', 'branch',
+            'branch_name', 'business_name', 'is_active', 'created_at'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'created_at', 'full_name']
 
 
 class StaffMemberListSerializer(serializers.ModelSerializer):
     """Serializer simplificado para listas de profesionales."""
+    full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = StaffMember
-        fields = ['id', 'first_name', 'last_name', 'photo', 'specialty']
+        fields = ['id', 'first_name', 'last_name_paterno', 'full_name', 'photo', 'specialty']
 
 
 class UserSerializer(serializers.ModelSerializer):
