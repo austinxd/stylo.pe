@@ -172,11 +172,12 @@ class BusinessSerializer(serializers.ModelSerializer):
 class BusinessListSerializer(serializers.ModelSerializer):
     """Serializer simplificado para listas de negocios."""
     branches_count = serializers.SerializerMethodField()
+    branches = BranchListSerializer(many=True, read_only=True, source='active_branches')
     categories = BusinessCategorySerializer(many=True, read_only=True)
 
     class Meta:
         model = Business
-        fields = ['id', 'name', 'slug', 'logo', 'is_verified', 'branches_count', 'categories']
+        fields = ['id', 'name', 'slug', 'logo', 'is_verified', 'branches_count', 'branches', 'categories']
 
     def get_branches_count(self, obj):
         return obj.branches.filter(is_active=True).count()
