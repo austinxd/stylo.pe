@@ -4,6 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import businessApi, { type Review } from '@/api/business'
 import servicesApi from '@/api/services'
 import bookingApi, { BookingSummary, AppointmentConfirmation } from '@/api/booking'
+import { getMediaUrl } from '@/api/client'
 import { Logo, Button, Input } from '@/components/ui'
 import type { Service, StaffProvider, AvailabilitySlot, BranchPhoto } from '@/types'
 import {
@@ -161,7 +162,7 @@ const PhotoLightbox = ({
       {/* Image */}
       <div className="max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
         <img
-          src={photo.image}
+          src={getMediaUrl(photo.image) || ''}
           alt={photo.caption || 'Foto'}
           className="max-w-full max-h-[85vh] object-contain rounded-lg"
         />
@@ -699,12 +700,12 @@ export default function BookingFlow() {
         // Construir array de fotos: primero las del API, luego cover_image si existe
         const photos: BranchPhoto[] = branch.photos || []
         const allImages: { image: string; caption?: string; is_cover: boolean }[] = [
-          ...photos.map(p => ({ image: p.image, caption: p.caption, is_cover: p.is_cover })),
+          ...photos.map(p => ({ image: getMediaUrl(p.image) || '', caption: p.caption, is_cover: p.is_cover })),
         ]
 
         // Si no hay fotos pero hay cover_image, usarlo como única imagen
         if (allImages.length === 0 && branch.cover_image) {
-          allImages.push({ image: branch.cover_image, caption: branch.name, is_cover: true })
+          allImages.push({ image: getMediaUrl(branch.cover_image) || '', caption: branch.name, is_cover: true })
         }
 
         // Ordenar: portada primero
@@ -833,7 +834,7 @@ export default function BookingFlow() {
                             className="w-full h-full flex-shrink-0"
                           >
                             <img
-                              src={img.image}
+                              src={getMediaUrl(img.image) || ''}
                               alt={img.caption || `${branch.name} - Foto ${idx + 1}`}
                               className="w-full h-full object-cover"
                             />
@@ -1088,7 +1089,7 @@ export default function BookingFlow() {
                               <div className="w-16 h-16 mx-auto mb-2 rounded-full overflow-hidden bg-gray-100">
                                 {staff.photo ? (
                                   <img
-                                    src={staff.photo}
+                                    src={getMediaUrl(staff.photo) || ''}
                                     alt={staff.first_name}
                                     className="w-full h-full object-cover"
                                   />
@@ -1266,7 +1267,7 @@ export default function BookingFlow() {
                           className="flex-1 rounded-[12px] overflow-hidden relative group"
                         >
                           <img
-                            src={img.image}
+                            src={getMediaUrl(img.image) || ''}
                             alt={img.caption || `${branch.name} - Foto ${idx + 2}`}
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                           />
@@ -1308,7 +1309,7 @@ export default function BookingFlow() {
                             className="rounded-[12px] overflow-hidden relative group"
                           >
                             <img
-                              src={img.image}
+                              src={getMediaUrl(img.image) || ''}
                               alt={img.caption || `${branch.name} - Foto ${idx + 2}`}
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                             />
@@ -1338,10 +1339,10 @@ export default function BookingFlow() {
       {lightboxOpen && branch && (() => {
         const photos: BranchPhoto[] = branch.photos || []
         const allImages: { image: string; caption?: string }[] = [
-          ...photos.map(p => ({ image: p.image, caption: p.caption })),
+          ...photos.map(p => ({ image: getMediaUrl(p.image) || '', caption: p.caption })),
         ]
         if (allImages.length === 0 && branch.cover_image) {
-          allImages.push({ image: branch.cover_image, caption: branch.name })
+          allImages.push({ image: getMediaUrl(branch.cover_image) || '', caption: branch.name })
         }
 
         return (
@@ -2082,7 +2083,7 @@ export default function BookingFlow() {
               >
                 <div className="w-14 h-14 rounded-full bg-gray-900 flex items-center justify-center text-white font-medium overflow-hidden">
                   {provider.photo ? (
-                    <img src={provider.photo} alt={provider.name} className="w-full h-full object-cover" />
+                    <img src={getMediaUrl(provider.photo) || ''} alt={provider.name} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-lg">{provider.name?.charAt(0)}</span>
                   )}
@@ -2137,7 +2138,7 @@ export default function BookingFlow() {
             {selectedStaff && (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-full">
                 {selectedStaff.photo ? (
-                  <img src={selectedStaff.photo} alt={selectedStaff.name} className="w-6 h-6 rounded-full object-cover" />
+                  <img src={getMediaUrl(selectedStaff.photo) || ''} alt={selectedStaff.name} className="w-6 h-6 rounded-full object-cover" />
                 ) : (
                   <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-medium">
                     {selectedStaff.name.charAt(0)}
@@ -2295,7 +2296,7 @@ export default function BookingFlow() {
             >
               <div className="flex items-center gap-3">
                 {staff.photo ? (
-                  <img src={staff.photo} alt={formatStaffName(staff.name)} className="w-10 h-10 rounded-full object-cover" />
+                  <img src={getMediaUrl(staff.photo) || ''} alt={formatStaffName(staff.name)} className="w-10 h-10 rounded-full object-cover" />
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
                     <span className="text-sm font-medium">{staff.name.charAt(0)}</span>
@@ -2320,7 +2321,7 @@ export default function BookingFlow() {
           {selectedStaff ? (
             <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
               {selectedStaff.photo ? (
-                <img src={selectedStaff.photo} alt={formatStaffName(selectedStaff.name)} className="w-10 h-10 rounded-full object-cover" />
+                <img src={getMediaUrl(selectedStaff.photo) || ''} alt={formatStaffName(selectedStaff.name)} className="w-10 h-10 rounded-full object-cover" />
               ) : (
                 <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600">
                   <span className="text-sm font-medium">{selectedStaff.name.charAt(0)}</span>

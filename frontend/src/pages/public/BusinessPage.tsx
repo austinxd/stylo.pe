@@ -2,6 +2,7 @@ import { useParams, Link, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import businessApi from '@/api/business'
+import { getMediaUrl } from '@/api/client'
 import { Button } from '@/components/ui'
 
 // Iconos SVG
@@ -148,7 +149,7 @@ export default function BusinessPage() {
             <div className="relative h-56 md:h-72">
               {business.cover_image ? (
                 <img
-                  src={business.cover_image}
+                  src={getMediaUrl(business.cover_image) || ''}
                   alt={business.name}
                   className="w-full h-full object-cover"
                 />
@@ -286,7 +287,7 @@ export default function BusinessPage() {
                     <div className="relative md:w-80 h-48 md:h-auto flex-shrink-0 overflow-hidden">
                       {branch.cover_image && !imageError[branch.id] ? (
                         <img
-                          src={branch.cover_image}
+                          src={getMediaUrl(branch.cover_image) || ''}
                           alt={branch.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           onError={() => setImageError(prev => ({ ...prev, [branch.id]: true }))}
