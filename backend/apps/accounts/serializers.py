@@ -142,16 +142,15 @@ class ClientUpdateSerializer(serializers.ModelSerializer):
 
 class StaffMemberSerializer(serializers.ModelSerializer):
     """Serializer para profesionales."""
-    branch_name = serializers.CharField(source='branch.name', read_only=True)
-    business_name = serializers.CharField(source='branch.business.name', read_only=True)
+    business_name = serializers.CharField(source='current_business.name', read_only=True)
     full_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = StaffMember
         fields = [
             'id', 'first_name', 'last_name_paterno', 'last_name_materno',
-            'full_name', 'photo', 'bio', 'specialty', 'branch',
-            'branch_name', 'business_name', 'is_active', 'created_at'
+            'full_name', 'photo', 'bio', 'specialty', 'branches',
+            'current_business', 'business_name', 'is_active', 'created_at'
         ]
         read_only_fields = ['id', 'created_at', 'full_name']
 
