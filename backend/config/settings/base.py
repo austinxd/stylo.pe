@@ -159,30 +159,34 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 
 # Celery Beat Schedule (tareas programadas)
-from celery.schedules import crontab
-
-CELERY_BEAT_SCHEDULE = {
-    'check-expired-trials': {
-        'task': 'subscriptions.check_expired_trials',
-        'schedule': crontab(hour=0, minute=5),  # 00:05 AM diario
-    },
-    'generate-monthly-invoices': {
-        'task': 'subscriptions.generate_monthly_invoices',
-        'schedule': crontab(hour=1, minute=0, day_of_month=1),  # 01:00 AM día 1 del mes
-    },
-    'process-pending-payments': {
-        'task': 'subscriptions.process_pending_payments',
-        'schedule': crontab(hour=9, minute=0),  # 09:00 AM diario
-    },
-    'send-payment-reminders': {
-        'task': 'subscriptions.send_payment_reminders',
-        'schedule': crontab(hour=10, minute=0),  # 10:00 AM diario
-    },
-    'suspend-unpaid-subscriptions': {
-        'task': 'subscriptions.suspend_unpaid_subscriptions',
-        'schedule': crontab(hour=23, minute=0),  # 11:00 PM diario
-    },
-}
+# Nota: En producción usamos cron jobs en lugar de Celery Beat
+try:
+    from celery.schedules import crontab
+    CELERY_BEAT_SCHEDULE = {
+        'check-expired-trials': {
+            'task': 'subscriptions.check_expired_trials',
+            'schedule': crontab(hour=0, minute=5),  # 00:05 AM diario
+        },
+        'generate-monthly-invoices': {
+            'task': 'subscriptions.generate_monthly_invoices',
+            'schedule': crontab(hour=1, minute=0, day_of_month=1),  # 01:00 AM día 1 del mes
+        },
+        'process-pending-payments': {
+            'task': 'subscriptions.process_pending_payments',
+            'schedule': crontab(hour=9, minute=0),  # 09:00 AM diario
+        },
+        'send-payment-reminders': {
+            'task': 'subscriptions.send_payment_reminders',
+            'schedule': crontab(hour=10, minute=0),  # 10:00 AM diario
+        },
+        'suspend-unpaid-subscriptions': {
+            'task': 'subscriptions.suspend_unpaid_subscriptions',
+            'schedule': crontab(hour=23, minute=0),  # 11:00 PM diario
+        },
+    }
+except ImportError:
+    # Celery no está instalado - usar cron jobs en su lugar
+    CELERY_BEAT_SCHEDULE = {}
 
 # Culqi Configuration (Pasarela de pagos)
 CULQI_PUBLIC_KEY = config('CULQI_PUBLIC_KEY', default='')
