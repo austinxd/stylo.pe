@@ -233,7 +233,7 @@ export default function Register() {
 
               <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <p className="text-amber-800 text-sm text-center">
-                  <strong>Nota:</strong> Este registro es exclusivo para dueños de negocio y profesionales.
+                  <strong>Nota:</strong> Este registro es exclusivo para dueños de negocio.
                   Los clientes no necesitan cuenta para reservar.
                 </p>
               </div>
@@ -280,6 +280,7 @@ export default function Register() {
                   </div>
                 </button>
 
+                {/* TODO: Habilitar registro de profesionales en el futuro
                 <button
                   onClick={() => handleSelectAccountType('staff')}
                   className="w-full p-6 border-2 border-neutral-200 rounded-xl hover:border-primary-900 hover:bg-primary-50 transition-all text-left group"
@@ -298,6 +299,7 @@ export default function Register() {
                     </div>
                   </div>
                 </button>
+                */}
               </div>
             </div>
           )}
