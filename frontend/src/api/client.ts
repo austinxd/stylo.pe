@@ -3,6 +3,16 @@ import { useAuthStore } from '@/store/authStore'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
+// Base URL para archivos media (sin /api/v1)
+export const MEDIA_BASE_URL = API_URL.replace('/api/v1', '').replace('/api', '') || ''
+
+// Helper para construir URLs de media
+export const getMediaUrl = (path: string | null | undefined): string | null => {
+  if (!path) return null
+  if (path.startsWith('http')) return path
+  return `${MEDIA_BASE_URL}${path}`
+}
+
 export const apiClient = axios.create({
   baseURL: API_URL,
   headers: {

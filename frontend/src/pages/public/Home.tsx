@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Logo, Button } from '@/components/ui'
-import api from '@/api/client'
+import api, { getMediaUrl } from '@/api/client'
 
 // Tipos
 interface Business {
@@ -420,7 +420,7 @@ export default function Home() {
                       <div className="relative w-24 h-24 flex-shrink-0 overflow-hidden bg-neutral-100">
                         {coverImage ? (
                           <img
-                            src={coverImage.startsWith('http') ? coverImage : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${coverImage}`}
+                            src={getMediaUrl(coverImage) || ''}
                             alt={business.name}
                             className="w-full h-full object-cover"
                           />
@@ -475,7 +475,7 @@ export default function Home() {
                       <div className="relative aspect-[4/3] overflow-hidden bg-neutral-100">
                         {coverImage ? (
                           <img
-                            src={coverImage.startsWith('http') ? coverImage : `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${coverImage}`}
+                            src={getMediaUrl(coverImage) || ''}
                             alt={business.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           />
