@@ -448,7 +448,7 @@ export default function BusinessPage() {
             Reservas en linea para {business.name}
           </p>
           <p className="text-xs text-gray-400 mt-2">
-            Proyecto desarrollado por D'austin sac
+            Proyecto desarrollado por Stafc Eirl
           </p>
         </div>
       </footer>
