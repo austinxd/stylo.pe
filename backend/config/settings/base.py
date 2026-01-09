@@ -208,6 +208,15 @@ REGISTRATION_TOKEN_EXPIRY_MINUTES = 15
 
 # WhatsApp Configuration (abstracto para diferentes proveedores)
 WHATSAPP_PROVIDER = config('WHATSAPP_PROVIDER', default='mock')  # mock, twilio, meta
-WHATSAPP_ACCOUNT_SID = config('WHATSAPP_ACCOUNT_SID', default='')
-WHATSAPP_AUTH_TOKEN = config('WHATSAPP_AUTH_TOKEN', default='')
-WHATSAPP_FROM_NUMBER = config('WHATSAPP_FROM_NUMBER', default='')
+
+# Twilio Configuration
+TWILIO_ACCOUNT_SID = config('TWILIO_ACCOUNT_SID', default='')
+TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
+TWILIO_WHATSAPP_FROM = config('TWILIO_WHATSAPP_FROM', default='')
+
+# Meta WhatsApp Business API Configuration
+META_WHATSAPP_TOKEN = config('META_WHATSAPP_TOKEN', default='')
+META_WHATSAPP_PHONE_ID = config('META_WHATSAPP_PHONE_ID', default='')
+META_WHATSAPP_OTP_TEMPLATE = config('META_WHATSAPP_OTP_TEMPLATE', default='stylo_otp')
+META_WHATSAPP_CONFIRMATION_TEMPLATE = config('META_WHATSAPP_CONFIRMATION_TEMPLATE', default='stylo_appointment_confirmation')
+META_WHATSAPP_REMINDER_TEMPLATE = config('META_WHATSAPP_REMINDER_TEMPLATE', default='stylo_appointment_reminder')

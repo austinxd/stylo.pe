@@ -805,7 +805,7 @@ export default function Home() {
           {/* Bottom bar */}
           <div className="border-t border-neutral-200 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-neutral-400">
-              Powered by austin
+              Proyecto desarrollado por D'austin sac
             </p>
             <div className="flex items-center gap-4 text-sm text-neutral-500">
               <a href="#" className="hover:text-primary-600">Terminos</a>

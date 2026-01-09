@@ -121,14 +121,18 @@ class TwilioWhatsAppProvider(WhatsAppProvider):
 
 
 class MetaWhatsAppProvider(WhatsAppProvider):
-    """Proveedor de WhatsApp via Meta Cloud API."""
+    """Proveedor de WhatsApp via Meta Cloud API con soporte de plantillas."""
 
     def __init__(self):
         self.token = settings.META_WHATSAPP_TOKEN
         self.phone_id = settings.META_WHATSAPP_PHONE_ID
         self.api_url = f"https://graph.facebook.com/v18.0/{self.phone_id}/messages"
+        self.otp_template = settings.META_WHATSAPP_OTP_TEMPLATE
+        self.confirmation_template = settings.META_WHATSAPP_CONFIRMATION_TEMPLATE
+        self.reminder_template = settings.META_WHATSAPP_REMINDER_TEMPLATE
 
-    def _send_message(self, phone_number: str, text: str) -> dict:
+    def _send_template(self, phone_number: str, template_name: str, components: list, language: str = 'es') -> dict:
+        """Envía un mensaje usando una plantilla de WhatsApp."""
         try:
             import requests
         except ImportError:
@@ -141,8 +145,12 @@ class MetaWhatsAppProvider(WhatsAppProvider):
         payload = {
             'messaging_product': 'whatsapp',
             'to': phone_number.replace('+', ''),
-            'type': 'text',
-            'text': {'body': text}
+            'type': 'template',
+            'template': {
+                'name': template_name,
+                'language': {'code': language},
+                'components': components
+            }
         }
 
         try:
@@ -150,14 +158,22 @@ class MetaWhatsAppProvider(WhatsAppProvider):
             response.raise_for_status()
             data = response.json()
             message_id = data.get('messages', [{}])[0].get('id')
-            logger.info(f"Mensaje enviado via Meta: {message_id}")
+            logger.info(f"Template '{template_name}' enviado via Meta: {message_id}")
             return {
                 'success': True,
                 'error': None,
                 'message_id': message_id
             }
+        except requests.exceptions.HTTPError as e:
+            error_detail = e.response.text if e.response else str(e)
+            logger.error(f"Error HTTP enviando template via Meta: {error_detail}")
+            return {
+                'success': False,
+                'error': error_detail,
+                'message_id': None
+            }
         except Exception as e:
-            logger.error(f"Error enviando mensaje via Meta: {e}")
+            logger.error(f"Error enviando template via Meta: {e}")
             return {
                 'success': False,
                 'error': str(e),
@@ -165,11 +181,71 @@ class MetaWhatsAppProvider(WhatsAppProvider):
             }
 
     def send_otp(self, phone_number: str, otp_code: str) -> dict:
-        message = f"Tu código de verificación Stylo es: {otp_code}. Válido por 5 minutos."
-        return self._send_message(phone_number, message)
+        """Envía OTP usando plantilla de autenticación."""
+        components = [
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': otp_code}
+                ]
+            }
+        ]
+        return self._send_template(phone_number, self.otp_template, components)
 
     def send_reminder(self, phone_number: str, message: str) -> dict:
-        return self._send_message(phone_number, message)
+        """Envía recordatorio genérico. Para plantillas específicas usar los métodos dedicados."""
+        logger.warning("send_reminder llamado con mensaje libre - usar métodos específicos para plantillas")
+        return {
+            'success': False,
+            'error': 'Use send_appointment_confirmation o send_appointment_reminder para mensajes con plantillas',
+            'message_id': None
+        }
+
+    def send_appointment_confirmation(
+        self,
+        phone_number: str,
+        client_name: str,
+        service_name: str,
+        staff_name: str,
+        datetime_str: str,
+        branch_name: str
+    ) -> dict:
+        """Envía confirmación de cita usando plantilla."""
+        components = [
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': client_name},
+                    {'type': 'text', 'text': service_name},
+                    {'type': 'text', 'text': staff_name},
+                    {'type': 'text', 'text': datetime_str},
+                    {'type': 'text', 'text': branch_name}
+                ]
+            }
+        ]
+        return self._send_template(phone_number, self.confirmation_template, components)
+
+    def send_appointment_reminder(
+        self,
+        phone_number: str,
+        client_name: str,
+        service_name: str,
+        datetime_str: str,
+        branch_name: str
+    ) -> dict:
+        """Envía recordatorio de cita usando plantilla."""
+        components = [
+            {
+                'type': 'body',
+                'parameters': [
+                    {'type': 'text', 'text': client_name},
+                    {'type': 'text', 'text': service_name},
+                    {'type': 'text', 'text': datetime_str},
+                    {'type': 'text', 'text': branch_name}
+                ]
+            }
+        ]
+        return self._send_template(phone_number, self.reminder_template, components)
 
 
 class WhatsAppService:
@@ -207,14 +283,20 @@ class WhatsAppService:
         branch_name: str
     ) -> dict:
         """Envía confirmación de cita."""
+        # Si el proveedor soporta plantillas, usar método específico
+        if hasattr(self.provider, 'send_appointment_confirmation'):
+            return self.provider.send_appointment_confirmation(
+                phone_number, client_name, service_name, staff_name, datetime_str, branch_name
+            )
+        # Fallback para proveedores sin plantillas (mock, twilio)
         message = (
-            f"¡Hola {client_name}! 👋\n\n"
+            f"Hola {client_name}!\n\n"
             f"Tu cita ha sido confirmada:\n"
-            f"📋 Servicio: {service_name}\n"
-            f"👤 Profesional: {staff_name}\n"
-            f"📅 Fecha: {datetime_str}\n"
-            f"📍 Local: {branch_name}\n\n"
-            f"¡Te esperamos!"
+            f"Servicio: {service_name}\n"
+            f"Profesional: {staff_name}\n"
+            f"Fecha: {datetime_str}\n"
+            f"Local: {branch_name}\n\n"
+            f"Te esperamos!"
         )
         return self.provider.send_reminder(phone_number, message)
 
@@ -227,12 +309,18 @@ class WhatsAppService:
         branch_name: str
     ) -> dict:
         """Envía recordatorio de cita (24h antes)."""
+        # Si el proveedor soporta plantillas, usar método específico
+        if hasattr(self.provider, 'send_appointment_reminder'):
+            return self.provider.send_appointment_reminder(
+                phone_number, client_name, service_name, datetime_str, branch_name
+            )
+        # Fallback para proveedores sin plantillas (mock, twilio)
         message = (
-            f"¡Hola {client_name}! 👋\n\n"
+            f"Hola {client_name}!\n\n"
             f"Te recordamos tu cita para mañana:\n"
-            f"📋 Servicio: {service_name}\n"
-            f"📅 Fecha: {datetime_str}\n"
-            f"📍 Local: {branch_name}\n\n"
-            f"¿Necesitas reprogramar? Responde a este mensaje."
+            f"Servicio: {service_name}\n"
+            f"Fecha: {datetime_str}\n"
+            f"Local: {branch_name}\n\n"
+            f"Si necesitas reprogramar, responde a este mensaje."
         )
         return self.provider.send_reminder(phone_number, message)

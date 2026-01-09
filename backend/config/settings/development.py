@@ -53,5 +53,5 @@ LOGGING = {
     },
 }
 
-# WhatsApp Mock en desarrollo
-WHATSAPP_PROVIDER = 'mock'
+# WhatsApp - usa el valor de .env (puede ser 'mock' o 'meta')
+# Para desarrollo local sin API real, cambiar WHATSAPP_PROVIDER=mock en .env
