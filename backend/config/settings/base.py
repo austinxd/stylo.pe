@@ -206,6 +206,12 @@ OTP_LENGTH = 6
 OTP_EXPIRY_MINUTES = 5
 REGISTRATION_TOKEN_EXPIRY_MINUTES = 15
 
+# OTP Provider Configuration
+OTP_PROVIDER = config('OTP_PROVIDER', default='mock')  # mock, twilio, whatsapp
+
+# Twilio SMS Configuration (cuando OTP_PROVIDER=twilio)
+TWILIO_SMS_FROM = config('TWILIO_SMS_FROM', default='')  # Numero SMS
+
 # WhatsApp Configuration (abstracto para diferentes proveedores)
 WHATSAPP_PROVIDER = config('WHATSAPP_PROVIDER', default='mock')  # mock, twilio, meta
 

@@ -21,7 +21,7 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer
 )
-from .services import OTPService, WhatsAppService
+from .services import OTPService, WhatsAppService, OTPProviderService
 from .models import StaffMember, BusinessOwnerProfile
 
 
@@ -202,9 +202,9 @@ class WhatsAppStartView(APIView):
         # Crear sesión OTP
         session, otp_code = OTPService.create_session(phone_number)
 
-        # Enviar OTP por WhatsApp
-        whatsapp = WhatsAppService()
-        result = whatsapp.send_otp(phone_number, otp_code)
+        # Enviar OTP usando el proveedor configurado (SMS o WhatsApp)
+        otp_sender = OTPProviderService()
+        result = otp_sender.send_otp(phone_number, otp_code)
 
         if not result['success']:
             return Response(
@@ -504,9 +504,9 @@ class PasswordResetRequestView(APIView):
         # Crear sesion OTP
         session, otp_code = OTPService.create_session(phone_number)
 
-        # Enviar OTP por WhatsApp
-        whatsapp = WhatsAppService()
-        result = whatsapp.send_otp(phone_number, otp_code)
+        # Enviar OTP usando el proveedor configurado (SMS o WhatsApp)
+        otp_sender = OTPProviderService()
+        result = otp_sender.send_otp(phone_number, otp_code)
 
         if not result['success']:
             return Response(
