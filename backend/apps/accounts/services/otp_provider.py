@@ -45,7 +45,8 @@ class TwilioSMSProvider(OTPProvider):
     def __init__(self):
         self.account_sid = settings.TWILIO_ACCOUNT_SID
         self.auth_token = settings.TWILIO_AUTH_TOKEN
-        self.from_number = settings.TWILIO_SMS_FROM
+        self.messaging_service_sid = getattr(settings, 'TWILIO_MESSAGING_SERVICE_SID', '')
+        self.from_number = getattr(settings, 'TWILIO_SMS_FROM', '')
         self._client = None
 
     @property
@@ -60,11 +61,19 @@ class TwilioSMSProvider(OTPProvider):
 
     def send_otp(self, phone_number: str, otp_code: str) -> dict:
         try:
-            message = self.client.messages.create(
-                body=f"Tu codigo de verificacion Stylo es: {otp_code}. Valido por 5 minutos.",
-                from_=self.from_number,
-                to=phone_number
-            )
+            # Usar Messaging Service SID si esta configurado, sino usar numero directo
+            msg_params = {
+                'body': f"Tu codigo de verificacion Stylo es: {otp_code}. Valido por 5 minutos.",
+                'to': phone_number
+            }
+            if self.messaging_service_sid:
+                msg_params['messaging_service_sid'] = self.messaging_service_sid
+            elif self.from_number:
+                msg_params['from_'] = self.from_number
+            else:
+                raise ValueError("Configura TWILIO_MESSAGING_SERVICE_SID o TWILIO_SMS_FROM")
+
+            message = self.client.messages.create(**msg_params)
             logger.info(f"OTP SMS enviado a {phone_number} via Twilio: {message.sid}")
             return {
                 'success': True,
