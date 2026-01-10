@@ -219,20 +219,20 @@ class PublicBookingViewSet(viewsets.ViewSet):
         session.expires_at = timezone.now() + timedelta(minutes=5)  # OTP válido 5 min
         session.save()
 
-        # Enviar OTP por WhatsApp
-        from apps.accounts.services.whatsapp_service import WhatsAppService
-        whatsapp_service = WhatsAppService()
-        whatsapp_service.send_otp(session.phone_number, otp_code)
+        # Enviar OTP usando el proveedor configurado (SMS o WhatsApp)
+        from apps.accounts.services import OTPProviderService
+        from django.conf import settings
+        otp_service = OTPProviderService()
+        otp_service.send_otp(session.phone_number, otp_code)
 
         # Respuesta
-        from django.conf import settings
         response_data = {
             'message': f'Código de verificación enviado a {data["phone_number"]}',
             'expires_in': 300  # 5 minutos
         }
 
         # En desarrollo/mock, mostramos el OTP en la respuesta
-        if settings.DEBUG or settings.WHATSAPP_PROVIDER == 'mock':
+        if getattr(settings, 'OTP_PROVIDER', 'mock') == 'mock':
             response_data['debug_otp'] = otp_code
 
         return Response(response_data)
@@ -369,15 +369,18 @@ class PublicBookingViewSet(viewsets.ViewSet):
         session.expires_at = timezone.now() + timedelta(minutes=5)
         session.save()
 
-        # TODO: Enviar OTP por WhatsApp
-
+        # Enviar OTP usando el proveedor configurado (SMS o WhatsApp)
+        from apps.accounts.services import OTPProviderService
         from django.conf import settings
+        otp_service = OTPProviderService()
+        otp_service.send_otp(session.phone_number, otp_code)
+
         response_data = {
             'message': f'Nuevo código enviado a {session.phone_number}',
             'expires_in': 300
         }
 
-        if settings.DEBUG:
+        if getattr(settings, 'OTP_PROVIDER', 'mock') == 'mock':
             response_data['debug_otp'] = otp_code
 
         return Response(response_data)
