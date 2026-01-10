@@ -96,19 +96,40 @@ class OTPService:
                 'user': None
             }
 
-        # Verificar OTP
-        if not session.verify_otp(otp_code):
-            session.attempts += 1
-            session.save()
-            remaining = session.max_attempts - session.attempts
-            return {
-                'success': False,
-                'error': f'Código OTP incorrecto. Te quedan {remaining} intentos.',
-                'session': session,
-                'is_registered': False,
-                'registration_token': None,
-                'user': None
-            }
+        # Verificar OTP - usar Twilio Verify si está configurado
+        from .otp_provider import OTPProviderService
+        otp_service = OTPProviderService()
+
+        if otp_service.uses_external_verification:
+            # Verificar contra Twilio Verify API
+            verify_result = otp_service.verify_otp(phone_number, otp_code)
+            if not verify_result['success'] or not verify_result['valid']:
+                session.attempts += 1
+                session.save()
+                remaining = session.max_attempts - session.attempts
+                error_msg = verify_result.get('error') or f'Código OTP incorrecto. Te quedan {remaining} intentos.'
+                return {
+                    'success': False,
+                    'error': error_msg,
+                    'session': session,
+                    'is_registered': False,
+                    'registration_token': None,
+                    'user': None
+                }
+        else:
+            # Verificar contra hash local
+            if not session.verify_otp(otp_code):
+                session.attempts += 1
+                session.save()
+                remaining = session.max_attempts - session.attempts
+                return {
+                    'success': False,
+                    'error': f'Código OTP incorrecto. Te quedan {remaining} intentos.',
+                    'session': session,
+                    'is_registered': False,
+                    'registration_token': None,
+                    'user': None
+                }
 
         # OTP correcto - actualizar sesión
         session.status = 'OTP_VERIFIED'

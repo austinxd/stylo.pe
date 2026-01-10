@@ -251,8 +251,20 @@ class PublicBookingViewSet(viewsets.ViewSet):
         session = serializer.context['booking_session']
         otp_code = serializer.validated_data['otp_code']
 
-        # Verificar OTP
-        if not session.verify_otp(otp_code):
+        # Verificar OTP - usar Twilio Verify si está configurado
+        from apps.accounts.services import OTPProviderService
+        otp_service = OTPProviderService()
+
+        otp_valid = False
+        if otp_service.uses_external_verification:
+            # Verificar contra Twilio Verify API
+            verify_result = otp_service.verify_otp(session.phone_number, otp_code)
+            otp_valid = verify_result.get('success') and verify_result.get('valid')
+        else:
+            # Verificar contra hash local
+            otp_valid = session.verify_otp(otp_code)
+
+        if not otp_valid:
             session.attempts += 1
             session.save(update_fields=['attempts'])
 
