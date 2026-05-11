@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { RefreshCw } from 'lucide-react'
-import apiClient from '@/api/client'
+import apiClient, { getApiErrorMessage } from '@/api/client'
+import { appointmentsApi } from '@/api/appointments'
 import { RescheduleModal } from '@/features/dashboard/RescheduleModal'
 import {
   format,
@@ -55,6 +57,39 @@ export default function CalendarViewContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
   const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null)
+
+  // === Drag-and-drop state (vista desktop) ===
+  // Mientras se arrastra una cita, guardamos su info. Cuando el cursor
+  // pasa sobre un slot del MISMO staff, ese slot resalta. Drop calcula
+  // el nuevo datetime y llama al endpoint /reschedule/.
+  const [draggingAppt, setDraggingAppt] = useState<Appointment | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ staffId: number; slotIndex: number } | null>(null)
+
+  const queryClient = useQueryClient()
+  const rescheduleMutation = useMutation({
+    mutationFn: ({ id, isoString }: { id: number; isoString: string }) =>
+      appointmentsApi.rescheduleAppointment(id, isoString),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'calendar'] })
+      toast.success('Cita reagendada')
+    },
+    onError: (err) => {
+      toast.error(getApiErrorMessage(err, 'No pudimos reagendar la cita'))
+    },
+  })
+
+  /**
+   * Convierte (staffId, slotIndex) en ISO datetime para el nuevo slot.
+   * timeSlots[slotIndex] es 'HH:MM' del día seleccionado.
+   */
+  const buildSlotIsoString = (slotIndex: number): string | null => {
+    const slotTime = timeSlots[slotIndex]
+    if (!slotTime) return null
+    const [hh, mm] = slotTime.split(':')
+    const dt = new Date(selectedDate)
+    dt.setHours(parseInt(hh, 10), parseInt(mm, 10), 0, 0)
+    return dt.toISOString()
+  }
 
   // Obtener sucursales
   const { data: branches = [], isLoading: branchesLoading, error: branchesError } = useQuery<Branch[]>({
@@ -626,74 +661,135 @@ export default function CalendarViewContent() {
                   </div>
 
                   {/* Columnas de profesionales con citas */}
-                  {staffMembers.map((staff) => (
-                    <div
-                      key={staff.id}
-                      className="flex-1 min-w-[150px] border-r border-gray-100 last:border-r-0 relative"
-                    >
-                      {/* Grid de fondo - líneas horizontales */}
-                      {timeSlots.map((time, idx) => {
-                        const isFullHour = idx % 2 === 0
-                        return (
-                          <div
-                            key={time}
-                            className={`h-10 ${
-                              isFullHour
-                                ? 'border-t border-gray-200'
-                                : 'border-t border-dashed border-gray-100'
-                            }`}
-                          />
-                        )
-                      })}
+                  {staffMembers.map((staff) => {
+                    // Determina si esta columna admite el drag actual.
+                    // Sólo el MISMO staff puede recibir un drop (el endpoint
+                    // /reschedule/ no cambia de profesional).
+                    const canDropOnThisColumn =
+                      !!draggingAppt && draggingAppt.staff === staff.id
 
-                      {/* Citas posicionadas absolutamente */}
-                      <div className="absolute inset-0 px-1">
-                        {appointmentsByStaff[staff.id]?.map((apt) => {
-                          const style = getAppointmentStyle(apt)
-                          const staffColor = staff.calendar_color || '#3B82F6'
-                          // Generar colores claros basados en el color del profesional
-                          const bgColor = `${staffColor}15` // 15 = ~8% opacity
-                          const borderColor = staffColor
+                    return (
+                      <div
+                        key={staff.id}
+                        className="flex-1 min-w-[150px] border-r border-gray-100 last:border-r-0 relative"
+                      >
+                        {/* Grid de fondo - líneas horizontales (también son drop targets) */}
+                        {timeSlots.map((time, idx) => {
+                          const isFullHour = idx % 2 === 0
+                          const isTargeted =
+                            canDropOnThisColumn &&
+                            dropTarget?.staffId === staff.id &&
+                            dropTarget?.slotIndex === idx
 
                           return (
                             <div
-                              key={apt.id}
-                              className="absolute left-1 right-1 rounded border-l-[3px] px-2 py-1 overflow-hidden cursor-pointer hover:shadow-md transition-shadow bg-white"
-                              style={{
-                                ...style,
-                                borderLeftColor: borderColor,
-                                backgroundColor: bgColor,
+                              key={time}
+                              onDragOver={(e) => {
+                                if (!canDropOnThisColumn) return
+                                e.preventDefault()
+                                e.dataTransfer.dropEffect = 'move'
+                                setDropTarget({ staffId: staff.id, slotIndex: idx })
                               }}
-                              title={`${apt.client_name} - ${apt.service_name}`}
-                            >
-                              <div className="flex items-start gap-1.5">
-                                {/* Foto del cliente */}
-                                {apt.client_photo ? (
-                                  <img
-                                    src={apt.client_photo}
-                                    alt={apt.client_name}
-                                    className="w-5 h-5 rounded-full object-cover flex-shrink-0 mt-0.5"
-                                  />
-                                ) : (
-                                  <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                    <span className="text-[8px] text-gray-600 font-medium">
-                                      {apt.client_name?.charAt(0)?.toUpperCase() || '?'}
-                                    </span>
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-semibold text-gray-800 truncate">
-                                    {format(parseISO(apt.start_datetime), 'HH:mm')} - {apt.client_name}
-                                  </p>
-                                  <p className="text-[10px] text-gray-500 truncate">{apt.service_name}</p>
-                                </div>
-                              </div>
-                            </div>
+                              onDragLeave={() => {
+                                setDropTarget((prev) =>
+                                  prev?.staffId === staff.id && prev?.slotIndex === idx
+                                    ? null
+                                    : prev,
+                                )
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                if (!draggingAppt || !canDropOnThisColumn) return
+                                const isoString = buildSlotIsoString(idx)
+                                if (!isoString) return
+                                rescheduleMutation.mutate({
+                                  id: draggingAppt.id,
+                                  isoString,
+                                })
+                                setDraggingAppt(null)
+                                setDropTarget(null)
+                              }}
+                              className={`h-10 transition-colors ${
+                                isFullHour
+                                  ? 'border-t border-gray-200'
+                                  : 'border-t border-dashed border-gray-100'
+                              } ${isTargeted ? 'bg-primary-100 ring-2 ring-primary-400 ring-inset' : ''}`}
+                            />
                           )
                         })}
+
+                        {/* Citas posicionadas absolutamente */}
+                        <div className="absolute inset-0 px-1 pointer-events-none">
+                          {appointmentsByStaff[staff.id]?.map((apt) => {
+                            const style = getAppointmentStyle(apt)
+                            const staffColor = staff.calendar_color || '#3B82F6'
+                            const bgColor = `${staffColor}15`
+                            const borderColor = staffColor
+                            const isTerminal = ['cancelled', 'completed', 'no_show'].includes(apt.status)
+                            const isDragSource = draggingAppt?.id === apt.id
+
+                            return (
+                              <div
+                                key={apt.id}
+                                draggable={!isTerminal}
+                                onDragStart={(e) => {
+                                  if (isTerminal) {
+                                    e.preventDefault()
+                                    return
+                                  }
+                                  setDraggingAppt(apt)
+                                  e.dataTransfer.effectAllowed = 'move'
+                                  e.dataTransfer.setData('text/plain', String(apt.id))
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingAppt(null)
+                                  setDropTarget(null)
+                                }}
+                                onClick={() => !isTerminal && setRescheduleTarget(apt)}
+                                title={
+                                  isTerminal
+                                    ? `${apt.client_name} - ${apt.service_name}`
+                                    : `${apt.client_name} - ${apt.service_name} (arrastra para reagendar, o click)`
+                                }
+                                className={`pointer-events-auto absolute left-1 right-1 rounded border-l-[3px] px-2 py-1 overflow-hidden transition-all bg-white ${
+                                  isTerminal
+                                    ? 'cursor-not-allowed opacity-70'
+                                    : 'cursor-grab active:cursor-grabbing hover:shadow-md'
+                                } ${isDragSource ? 'opacity-40' : ''}`}
+                                style={{
+                                  ...style,
+                                  borderLeftColor: borderColor,
+                                  backgroundColor: bgColor,
+                                }}
+                              >
+                                <div className="flex items-start gap-1.5">
+                                  {apt.client_photo ? (
+                                    <img
+                                      src={apt.client_photo}
+                                      alt={apt.client_name}
+                                      className="w-5 h-5 rounded-full object-cover flex-shrink-0 mt-0.5"
+                                    />
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                      <span className="text-[8px] text-gray-600 font-medium">
+                                        {apt.client_name?.charAt(0)?.toUpperCase() || '?'}
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-[11px] font-semibold text-gray-800 truncate">
+                                      {format(parseISO(apt.start_datetime), 'HH:mm')} - {apt.client_name}
+                                    </p>
+                                    <p className="text-[10px] text-gray-500 truncate">{apt.service_name}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
