@@ -304,6 +304,23 @@ class WaitlistEntry(models.Model):
         'Token expira', null=True, blank=True,
     )
 
+    # Slot específico que se liberó (al notificar al cliente).
+    # Cuando reclame, crearemos un nuevo Appointment con estos mismos
+    # datos (staff, start_datetime, end_datetime).
+    notified_for_staff = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Profesional del slot ofrecido',
+    )
+    notified_for_start_datetime = models.DateTimeField(
+        'Inicio del slot ofrecido', null=True, blank=True,
+    )
+    notified_for_end_datetime = models.DateTimeField(
+        'Fin del slot ofrecido', null=True, blank=True,
+    )
+
     # Auditoría
     notified_at = models.DateTimeField('Notificado el', null=True, blank=True)
     claimed_at = models.DateTimeField('Reservó el', null=True, blank=True)

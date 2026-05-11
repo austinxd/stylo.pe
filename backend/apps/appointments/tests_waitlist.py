@@ -466,6 +466,129 @@ class WaitlistClaimTests(TestCase):
             claim_waitlist_slot(token='no-existe')
 
 
+class WaitlistClaimCreatesAppointmentTests(TestCase):
+    """
+    Cuando el waitlist está vinculado a un slot específico
+    (notified_for_*), reclamar debe crear la cita en una sola operación.
+    """
+
+    def setUp(self):
+        self.ctx = _setup_tenant()
+        self.client_api = APIClient()
+        self.future_start = timezone.now() + timedelta(days=2)
+        self.future_date = self.future_start.astimezone(
+            timezone.get_current_timezone()
+        ).date()
+
+        # Entry notificada con slot exacto
+        self.entry = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51987654321',
+            first_name='Ana',
+            preferred_date=self.future_date,
+            status='notified',
+            claim_token='tkn-with-slot',
+            claim_token_expires_at=timezone.now() + timedelta(minutes=30),
+            notified_at=timezone.now(),
+            notified_for_staff=self.ctx['staff'],
+            notified_for_start_datetime=self.future_start,
+            notified_for_end_datetime=self.future_start + timedelta(minutes=30),
+        )
+
+    def test_claim_creates_appointment(self):
+        response = self.client_api.post(
+            '/api/v1/appointments/waitlist/claim/tkn-with-slot/'
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn('appointment', response.data)
+        self.assertEqual(response.data['appointment']['status'], 'confirmed')
+
+        # Verificar en DB
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.status, 'claimed')
+
+        appointment = Appointment.objects.get(
+            pk=response.data['appointment']['id']
+        )
+        self.assertEqual(appointment.staff_id, self.ctx['staff'].id)
+        self.assertEqual(appointment.service_id, self.ctx['service'].id)
+
+    def test_claim_conflict_marks_entry_expired(self):
+        """Si entre notify y claim alguien ocupó el slot, devolver error."""
+        # Crear cita conflictiva en el mismo slot
+        create_appointment_atomic(
+            branch_id=self.ctx['branch'].id,
+            client=self.ctx['client'],
+            staff_id=self.ctx['staff'].id,
+            service=self.ctx['service'],
+            start_datetime=self.future_start,
+            price=Decimal('50.00'),
+            create_reminder=False,
+        )
+
+        response = self.client_api.post(
+            '/api/v1/appointments/waitlist/claim/tkn-with-slot/'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.entry.refresh_from_db()
+        # Como el slot se ocupó, marcamos como expired para liberar la cola
+        self.assertEqual(self.entry.status, 'expired')
+
+    def test_claim_creates_new_client_when_unknown(self):
+        """Si el phone del waitlist no corresponde a un Client, se crea uno."""
+        # Phone diferente al de _setup_tenant
+        self.entry.phone_number = '+51900111222'
+        self.entry.first_name = 'NuevoCliente'
+        self.entry.save()
+
+        response = self.client_api.post(
+            '/api/v1/appointments/waitlist/claim/tkn-with-slot/'
+        )
+        self.assertEqual(response.status_code, 200)
+
+        from apps.accounts.models import Client
+        created = Client.objects.filter(phone_number='+51900111222').first()
+        self.assertIsNotNone(created)
+        self.assertEqual(created.first_name, 'NuevoCliente')
+
+
+class WaitlistEntryStoresSlotOnNotificationTests(TestCase):
+    """
+    Verifica que process_waitlist_for_appointment guarde
+    notified_for_staff/start/end al notificar al cliente.
+    """
+
+    def setUp(self):
+        self.ctx = _setup_tenant()
+        self.start = timezone.now() + timedelta(days=2)
+        self.appointment = create_appointment_atomic(
+            branch_id=self.ctx['branch'].id,
+            client=self.ctx['client'],
+            staff_id=self.ctx['staff'].id,
+            service=self.ctx['service'],
+            start_datetime=self.start,
+            price=Decimal('50.00'),
+            create_reminder=False,
+        )
+        self.appt_date = self.start.astimezone(timezone.get_current_timezone()).date()
+
+    def test_notification_records_freed_slot(self):
+        entry = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'], service=self.ctx['service'],
+            phone_number='+51900000001', first_name='X',
+            preferred_date=self.appt_date,
+        )
+        # Cancelar dispara el signal
+        self.appointment.cancel(cancelled_by='client')
+        entry.refresh_from_db()
+
+        self.assertEqual(entry.status, 'notified')
+        self.assertEqual(entry.notified_for_staff_id, self.ctx['staff'].id)
+        self.assertEqual(entry.notified_for_start_datetime, self.appointment.start_datetime)
+        self.assertEqual(entry.notified_for_end_datetime, self.appointment.end_datetime)
+
+
 class WaitlistExpirationTests(TestCase):
     """
     Tests del sweep que expira entries 'notified' y promueve al siguiente.

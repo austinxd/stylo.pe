@@ -734,7 +734,7 @@ class WaitlistViewSet(viewsets.ViewSet):
                 'expires_at': entry.claim_token_expires_at.isoformat(),
             })
 
-        # POST: claim
+        # POST: claim → crea la cita atómicamente
         try:
             entry = claim_waitlist_slot(token=token)
         except WaitlistClaimError as e:
@@ -743,8 +743,15 @@ class WaitlistViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response({
+        appointment = getattr(entry, '_created_appointment', None)
+        response_data = {
             'success': True,
-            'message': 'Slot reclamado. Continúa con la reserva con tus datos.',
+            'message': '¡Reserva confirmada!' if appointment else 'Slot reclamado.',
             'entry': WaitlistEntrySerializer(entry).data,
-        }, status=status.HTTP_200_OK)
+        }
+        if appointment:
+            response_data['appointment'] = PublicAppointmentConfirmationSerializer(
+                appointment
+            ).data
+
+        return Response(response_data, status=status.HTTP_200_OK)

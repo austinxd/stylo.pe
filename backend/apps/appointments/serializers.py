@@ -377,15 +377,26 @@ class WaitlistJoinSerializer(serializers.Serializer):
 class WaitlistEntrySerializer(serializers.ModelSerializer):
     """Serializer de salida para mostrar una entry de waitlist."""
     branch_name = serializers.CharField(source='branch.name', read_only=True)
+    business_name = serializers.CharField(source='branch.business.name', read_only=True)
     service_name = serializers.CharField(source='service.name', read_only=True)
+    service_duration = serializers.IntegerField(
+        source='service.total_duration', read_only=True, default=None,
+    )
     staff_name = serializers.CharField(
         source='staff.full_name', read_only=True, default=None,
+    )
+    notified_for_staff_name = serializers.CharField(
+        source='notified_for_staff.full_name', read_only=True, default=None,
     )
 
     class Meta:
         model = WaitlistEntry
         fields = [
-            'id', 'branch_name', 'service_name', 'staff_name',
+            'id', 'branch_name', 'business_name',
+            'service_name', 'service_duration', 'staff_name',
+            'notified_for_staff_name',
+            'notified_for_start_datetime',
+            'notified_for_end_datetime',
             'phone_number', 'first_name',
             'preferred_date', 'preferred_time_start', 'preferred_time_end',
             'status', 'created_at', 'notified_at',

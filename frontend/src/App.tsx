@@ -15,6 +15,7 @@ const Search = lazy(() => import('@/pages/public/Search'))
 const BusinessPage = lazy(() => import('@/pages/public/BusinessPage'))
 const BookingFlow = lazy(() => import('@/pages/public/BookingFlow'))
 const ReviewPage = lazy(() => import('@/pages/public/ReviewPage'))
+const WaitlistClaim = lazy(() => import('@/pages/public/WaitlistClaim'))
 
 // Autenticación
 const Login = lazy(() => import('@/pages/auth/Login'))
@@ -63,6 +64,9 @@ function App() {
         <Routes>
           {/* Reseña con token (pública, sin layout) */}
           <Route path="/review/:token" element={<ReviewPage />} />
+
+          {/* Reclamar slot de waitlist (pública, sin layout) */}
+          <Route path="/waitlist/claim/:token" element={<WaitlistClaim />} />
 
           {/* Autenticación */}
           <Route path="/auth/login" element={<Login />} />

@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { RefreshCw } from 'lucide-react'
 import apiClient from '@/api/client'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Button } from '@/components/ui'
+import { RescheduleModal } from '@/features/dashboard/RescheduleModal'
 
 interface Appointment {
   id: number
@@ -35,6 +37,7 @@ export default function AppointmentsListContent() {
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null)
 
   // Obtener citas
   const { data: appointments = [], isLoading, error } = useQuery<Appointment[]>({
@@ -273,8 +276,22 @@ export default function AppointmentsListContent() {
 
               {/* Acciones de estado */}
               <div className="pt-4 border-t border-gray-200">
-                <p className="text-sm font-medium text-gray-700 mb-3">Cambiar estado:</p>
+                <p className="text-sm font-medium text-gray-700 mb-3">Acciones:</p>
                 <div className="flex flex-wrap gap-2">
+                  {/* Reagendar disponible para pending/confirmed/in_progress */}
+                  {['pending', 'confirmed', 'in_progress'].includes(selectedAppointment.status) && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<RefreshCw className="w-3.5 h-3.5" />}
+                      onClick={() => {
+                        setRescheduleTarget(selectedAppointment)
+                        setSelectedAppointment(null)
+                      }}
+                    >
+                      Reagendar
+                    </Button>
+                  )}
                   {selectedAppointment.status === 'pending' && (
                     <>
                       <Button
@@ -334,6 +351,11 @@ export default function AppointmentsListContent() {
           </div>
         </div>
       )}
+
+      <RescheduleModal
+        appointment={rescheduleTarget}
+        onClose={() => setRescheduleTarget(null)}
+      />
     </div>
   )
 }

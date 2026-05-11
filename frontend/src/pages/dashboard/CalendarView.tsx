@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { RefreshCw } from 'lucide-react'
 import apiClient from '@/api/client'
+import { RescheduleModal } from '@/features/dashboard/RescheduleModal'
 import {
   format,
   parseISO,
@@ -52,6 +54,7 @@ export default function CalendarViewContent() {
   const [selectedBranch, setSelectedBranch] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null)
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null)
 
   // Obtener sucursales
   const { data: branches = [], isLoading: branchesLoading, error: branchesError } = useQuery<Branch[]>({
@@ -528,6 +531,19 @@ export default function CalendarViewContent() {
                                 </p>
                               </div>
                             </div>
+                            {/* Acciones rápidas */}
+                            {apt.status !== 'cancelled' && apt.status !== 'completed' && apt.status !== 'no_show' && (
+                              <div className="mt-3 pt-3 border-t border-neutral-100 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setRescheduleTarget(apt)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 hover:text-neutral-900 px-2 py-1 rounded-md hover:bg-neutral-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-900"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                                  Reagendar
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -709,6 +725,12 @@ export default function CalendarViewContent() {
           ))}
         </div>
       )}
+
+      {/* Modal de reagendar (se activa con botón en cada card) */}
+      <RescheduleModal
+        appointment={rescheduleTarget}
+        onClose={() => setRescheduleTarget(null)}
+      />
     </div>
   )
 }

@@ -177,14 +177,18 @@ def process_waitlist_for_appointment(appointment) -> WaitlistEntry | None:
         # Doble check de time range en Python (más fácil que en SQL)
         if not entry.matches_appointment_window(appointment):
             continue
-        # Match: notificar
+        # Match: notificar Y registrar el slot exacto que se liberó
         entry.status = 'notified'
         entry.claim_token = WaitlistEntry.generate_claim_token()
         entry.claim_token_expires_at = timezone.now() + WAITLIST_CLAIM_TTL
         entry.notified_at = timezone.now()
+        entry.notified_for_staff_id = appointment.staff_id
+        entry.notified_for_start_datetime = appointment.start_datetime
+        entry.notified_for_end_datetime = appointment.end_datetime
         entry.save(update_fields=[
             'status', 'claim_token', 'claim_token_expires_at',
-            'notified_at', 'updated_at',
+            'notified_at', 'notified_for_staff', 'notified_for_start_datetime',
+            'notified_for_end_datetime', 'updated_at',
         ])
         logger.info(
             "Waitlist notificación: entry=%s appointment_freed=%s token=%s...",
@@ -230,21 +234,92 @@ def claim_waitlist_slot(*, token: str, otp_verified_session=None):
             )
         raise WaitlistClaimError('El tiempo para reclamar este slot expiró.')
 
-    # Claim atómico: re-leer con select_for_update para protección concurrente
-    with transaction.atomic():
-        try:
-            entry = WaitlistEntry.objects.select_for_update().get(
-                claim_token=token, status='notified',
-            )
-        except WaitlistEntry.DoesNotExist:
-            # Otro proceso ya lo reclamó/expiró
-            raise WaitlistClaimError('Esta notificación ya fue procesada.')
+    # Claim atómico: re-leer con select_for_update y crear el Appointment
+    # en la misma transacción para anti-race con otros bookings.
+    #
+    # IMPORTANTE: si hay conflicto, marcamos como 'expired' en una
+    # transacción separada para que el cambio persista al hacer raise.
+    conflict_detected = False
+    try:
+        with transaction.atomic():
+            try:
+                entry = WaitlistEntry.objects.select_for_update().get(
+                    claim_token=token, status='notified',
+                )
+            except WaitlistEntry.DoesNotExist:
+                raise WaitlistClaimError('Esta notificación ya fue procesada.')
 
-        entry.status = 'claimed'
-        entry.claimed_at = timezone.now()
-        entry.save(update_fields=['status', 'claimed_at', 'updated_at'])
+            if (
+                entry.notified_for_staff_id
+                and entry.notified_for_start_datetime
+                and entry.service_id
+            ):
+                from apps.services.models import StaffService
 
-    logger.info("Waitlist entry %s claimed via token", entry.pk)
+                try:
+                    staff_service = StaffService.objects.get(
+                        staff_id=entry.notified_for_staff_id,
+                        service_id=entry.service_id,
+                    )
+                    price = staff_service.price
+                except StaffService.DoesNotExist:
+                    price = entry.service.price
+
+                client = entry.client
+                if client is None:
+                    from apps.accounts.models import Client
+                    client, _ = Client.objects.get_or_create(
+                        phone_number=entry.phone_number,
+                        defaults={
+                            'first_name': entry.first_name,
+                            'last_name_paterno': '',
+                            'document_type': 'pasaporte',
+                            'document_number': f'wl-{entry.pk}',
+                        },
+                    )
+
+                try:
+                    appointment = create_appointment_atomic(
+                        branch_id=entry.branch_id,
+                        client=client,
+                        staff_id=entry.notified_for_staff_id,
+                        service=entry.service,
+                        start_datetime=entry.notified_for_start_datetime,
+                        price=price,
+                        notes=f'(Reclamado desde waitlist #{entry.pk})',
+                        status='confirmed',
+                        create_reminder=True,
+                    )
+                except AppointmentConflictError:
+                    # Marcar para procesar fuera del atomic (que va a hacer rollback)
+                    conflict_detected = True
+                    raise WaitlistClaimError(
+                        'Lamentablemente el cupo se volvió a ocupar. Te quitamos de la cola.'
+                    )
+
+                entry.status = 'claimed'
+                entry.claimed_at = timezone.now()
+                entry.save(update_fields=['status', 'claimed_at', 'updated_at'])
+                entry._created_appointment = appointment
+                logger.info(
+                    "Waitlist entry %s claimed → appointment %s creada",
+                    entry.pk, appointment.pk,
+                )
+            else:
+                entry.status = 'claimed'
+                entry.claimed_at = timezone.now()
+                entry.save(update_fields=['status', 'claimed_at', 'updated_at'])
+                logger.info("Waitlist entry %s claimed (sin slot exacto)", entry.pk)
+    except WaitlistClaimError:
+        if conflict_detected:
+            # El atomic block hizo rollback; ahora persistimos el expired
+            # en una transacción nueva.
+            with transaction.atomic():
+                WaitlistEntry.objects.filter(
+                    claim_token=token, status='notified',
+                ).update(status='expired', updated_at=timezone.now())
+        raise
+
     return entry
 
 
@@ -295,14 +370,20 @@ def expire_old_waitlist_notifications():
         if next_entry and (
             entry.staff_id is None or next_entry.staff_id in (None, entry.staff_id)
         ):
-            # Re-aplicar la notificación con los mismos límites de hora
+            # Re-aplicar la notificación heredando el slot exacto que
+            # ofrecimos al entry anterior (mismo staff + datetime).
             next_entry.status = 'notified'
             next_entry.claim_token = WaitlistEntry.generate_claim_token()
             next_entry.claim_token_expires_at = now + WAITLIST_CLAIM_TTL
             next_entry.notified_at = now
+            next_entry.notified_for_staff_id = entry.notified_for_staff_id
+            next_entry.notified_for_start_datetime = entry.notified_for_start_datetime
+            next_entry.notified_for_end_datetime = entry.notified_for_end_datetime
             next_entry.save(update_fields=[
                 'status', 'claim_token', 'claim_token_expires_at',
-                'notified_at', 'updated_at',
+                'notified_at', 'notified_for_staff',
+                'notified_for_start_datetime', 'notified_for_end_datetime',
+                'updated_at',
             ])
             promoted_count += 1
             logger.info(
