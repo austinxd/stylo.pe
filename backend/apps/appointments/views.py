@@ -11,8 +11,12 @@ from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Appointment, AppointmentReminder
-from .services import create_appointment_atomic, AppointmentConflictError
+from .models import Appointment, AppointmentReminder, WaitlistEntry
+from .services import (
+    create_appointment_atomic,
+    reschedule_appointment_atomic,
+    AppointmentConflictError,
+)
 from common.throttling import (
     BookingSendOTPIPThrottle,
     BookingVerifyOTPIPThrottle,
@@ -27,7 +31,9 @@ from .serializers import (
     PublicBookingStartSerializer,
     PublicBookingSendOTPSerializer,
     PublicBookingVerifyOTPSerializer,
-    PublicAppointmentConfirmationSerializer
+    PublicAppointmentConfirmationSerializer,
+    WaitlistJoinSerializer,
+    WaitlistEntrySerializer,
 )
 from apps.core.models import Branch
 from apps.accounts.models import Client, BookingSession
@@ -485,6 +491,61 @@ class DashboardAppointmentViewSet(viewsets.ModelViewSet):
 
         return Response(AppointmentSerializer(appointment).data)
 
+    @action(detail=True, methods=['post'])
+    def reschedule(self, request, pk=None):
+        """
+        Reagendar una cita a una nueva fecha/hora.
+
+        Body: { "start_datetime": "2026-05-15T14:00:00Z" }
+
+        Garantiza atómicamente que no haya conflicto con otras citas del staff.
+        Si el nuevo horario está tomado, retorna 409 Conflict.
+        Si la cita está en estado terminal (cancelled/completed/no_show),
+        retorna 400.
+        """
+        from django.utils.dateparse import parse_datetime
+
+        appointment = self.get_object()
+
+        if appointment.status in ('cancelled', 'completed', 'no_show'):
+            return Response(
+                {'error': f'No se puede reagendar una cita {appointment.get_status_display().lower()}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw = request.data.get('start_datetime')
+        if not raw:
+            return Response(
+                {'error': 'start_datetime es requerido'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        new_start = parse_datetime(raw)
+        if new_start is None:
+            return Response(
+                {'error': 'Formato inválido. Usa ISO 8601 (ej: 2026-05-15T14:00:00Z).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if timezone.is_naive(new_start):
+            new_start = timezone.make_aware(new_start)
+
+        # Política: no reagendar a fechas pasadas
+        if new_start <= timezone.now():
+            return Response(
+                {'error': 'No se puede reagendar a una fecha pasada.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            updated = reschedule_appointment_atomic(
+                appointment=appointment,
+                new_start_datetime=new_start,
+            )
+        except AppointmentConflictError as e:
+            return Response({'error': str(e)}, status=status.HTTP_409_CONFLICT)
+
+        return Response(AppointmentSerializer(updated).data)
+
     @action(detail=False, methods=['get'])
     def calendar(self, request):
         """
@@ -508,3 +569,130 @@ class DashboardAppointmentViewSet(viewsets.ModelViewSet):
         ).select_related('client', 'staff', 'service')
 
         return Response(AppointmentSerializer(appointments, many=True).data)
+
+
+class WaitlistViewSet(viewsets.ViewSet):
+    """
+    API pública para gestionar lista de espera de slots.
+
+    POST /api/v1/appointments/waitlist/join/        Anotarse
+    GET  /api/v1/appointments/waitlist/status/?phone=+51...  Ver entries
+    POST /api/v1/appointments/waitlist/cancel/      Salir
+    """
+    permission_classes = [AllowAny]
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='join',
+        throttle_classes=[BookingSendOTPIPThrottle],
+    )
+    def join(self, request):
+        """
+        Anota a un cliente en lista de espera.
+
+        El cliente NO necesita cuenta. Si su documento ya existe como
+        Client, lo asociamos automáticamente.
+        """
+        serializer = WaitlistJoinSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Buscar Client existente por phone_number (best-effort)
+        client = Client.objects.filter(
+            phone_number=data['phone_number']
+        ).first()
+
+        # Check explícito ANTES de intentar crear: hay un entry activo
+        # con la misma combinación clave. Más confiable que capturar
+        # IntegrityError (cuyo mensaje varía entre MySQL y SQLite).
+        already_waiting = WaitlistEntry.objects.filter(
+            branch_id=data['branch_id'],
+            service=data['_service'],
+            phone_number=data['phone_number'],
+            preferred_date=data['preferred_date'],
+            status='waiting',
+        ).exists()
+        if already_waiting:
+            return Response(
+                {'error': 'Ya estás en la lista de espera para este servicio en esta fecha.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        entry = WaitlistEntry.objects.create(
+            branch_id=data['branch_id'],
+            service=data['_service'],
+            staff=data.get('_staff'),
+            client=client,
+            phone_number=data['phone_number'],
+            first_name=data['first_name'],
+            preferred_date=data['preferred_date'],
+            preferred_time_start=data.get('preferred_time_start'),
+            preferred_time_end=data.get('preferred_time_end'),
+            notes=data.get('notes', ''),
+            status='waiting',
+        )
+
+        return Response(
+            WaitlistEntrySerializer(entry).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['get'], url_path='status')
+    def get_status(self, request):
+        """
+        Lista las entries en waitlist del teléfono dado.
+
+        Query: ?phone=+51987654321
+        """
+        phone = request.query_params.get('phone', '').strip()
+        if not phone:
+            return Response(
+                {'error': 'El parámetro phone es requerido'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        entries = WaitlistEntry.objects.filter(
+            phone_number=phone,
+        ).exclude(status__in=['cancelled', 'expired', 'claimed']).order_by('-created_at')
+
+        return Response(WaitlistEntrySerializer(entries, many=True).data)
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='cancel',
+        throttle_classes=[BookingSendOTPIPThrottle],
+    )
+    def cancel(self, request):
+        """
+        Cancela una entry de waitlist (cliente se baja de la lista).
+
+        Body: { "entry_id": 123, "phone_number": "+51..." }
+        Pedimos el teléfono como prueba simple de identidad.
+        """
+        entry_id = request.data.get('entry_id')
+        phone = request.data.get('phone_number', '').strip()
+
+        if not entry_id or not phone:
+            return Response(
+                {'error': 'entry_id y phone_number son requeridos'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            entry = WaitlistEntry.objects.get(pk=entry_id, phone_number=phone)
+        except WaitlistEntry.DoesNotExist:
+            return Response(
+                {'error': 'No se encontró la entrada o el teléfono no coincide.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if entry.status in ['cancelled', 'expired', 'claimed']:
+            return Response(
+                {'error': f'Esta entrada ya está {entry.get_status_display().lower()}.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        entry.status = 'cancelled'
+        entry.save(update_fields=['status', 'updated_at'])
+        return Response({'success': True, 'message': 'Te quitamos de la lista de espera.'})

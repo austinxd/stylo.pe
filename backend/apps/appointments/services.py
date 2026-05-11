@@ -3,13 +3,21 @@ Servicios de negocio para citas.
 
 Provee `create_appointment_atomic` para crear citas evitando race conditions
 en double-booking, usando select_for_update sobre el rango de conflicto.
+También provee `process_waitlist_for_appointment` para notificar al primer
+cliente en lista de espera cuando un slot se libera.
 """
+import logging
 from datetime import timedelta
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
-from .models import Appointment, AppointmentReminder
+from .models import Appointment, AppointmentReminder, WaitlistEntry
+
+logger = logging.getLogger(__name__)
+
+# Tiempo que el cliente notificado tiene para reclamar el slot
+WAITLIST_CLAIM_TTL = timedelta(minutes=30)
 
 
 class AppointmentConflictError(Exception):
@@ -128,3 +136,60 @@ def reschedule_appointment_atomic(*, appointment, new_start_datetime):
     appointment.end_datetime = new_end_datetime
     appointment.save(update_fields=['start_datetime', 'end_datetime', 'updated_at'])
     return appointment
+
+
+@transaction.atomic
+def process_waitlist_for_appointment(appointment) -> WaitlistEntry | None:
+    """
+    Cuando una cita se cancela, busca al primer cliente en waitlist que
+    encaje con su slot, lo marca como `notified`, genera un claim_token
+    válido por WAITLIST_CLAIM_TTL, y retorna el entry.
+
+    Retorna None si no hay nadie en espera matcheable.
+
+    Diseño:
+    - FIFO: el primero en anotarse (created_at asc) tiene prioridad.
+    - select_for_update para evitar que dos cancelaciones simultáneas
+      notifiquen al mismo cliente.
+    - El envío de WhatsApp queda fuera de la transacción (lo dispara
+      el caller después del commit).
+    """
+    # Candidates: entries en waiting que matchean criterios básicos
+    appt_date = appointment.start_datetime.astimezone(
+        timezone.get_current_timezone()
+    ).date()
+
+    candidates = (
+        WaitlistEntry.objects.select_for_update()
+        .filter(
+            branch_id=appointment.branch_id,
+            service_id=appointment.service_id,
+            preferred_date=appt_date,
+            status='waiting',
+        )
+        # Si la cita era con un staff específico, las entries con staff
+        # null o ese mismo staff matchean. Las entries con OTRO staff no.
+        .filter(models.Q(staff__isnull=True) | models.Q(staff_id=appointment.staff_id))
+        .order_by('created_at')
+    )
+
+    for entry in candidates:
+        # Doble check de time range en Python (más fácil que en SQL)
+        if not entry.matches_appointment_window(appointment):
+            continue
+        # Match: notificar
+        entry.status = 'notified'
+        entry.claim_token = WaitlistEntry.generate_claim_token()
+        entry.claim_token_expires_at = timezone.now() + WAITLIST_CLAIM_TTL
+        entry.notified_at = timezone.now()
+        entry.save(update_fields=[
+            'status', 'claim_token', 'claim_token_expires_at',
+            'notified_at', 'updated_at',
+        ])
+        logger.info(
+            "Waitlist notificación: entry=%s appointment_freed=%s token=%s...",
+            entry.pk, appointment.pk, entry.claim_token[:8],
+        )
+        return entry
+
+    return None

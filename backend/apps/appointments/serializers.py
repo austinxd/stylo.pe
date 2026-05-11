@@ -6,7 +6,7 @@ from django.utils import timezone
 from django.db.models import Q
 from datetime import timedelta
 
-from .models import Appointment, AppointmentReminder
+from .models import Appointment, AppointmentReminder, WaitlistEntry
 from apps.services.models import Service, StaffService
 from apps.accounts.models import StaffMember, Client, BookingSession
 from apps.core.models import Branch
@@ -285,3 +285,109 @@ class PublicAppointmentConfirmationSerializer(serializers.ModelSerializer):
             'start_datetime', 'end_datetime', 'duration_minutes',
             'status', 'price', 'created_at'
         ]
+
+
+
+class WaitlistJoinSerializer(serializers.Serializer):
+    """
+    Serializer para anotarse en la lista de espera de un slot lleno.
+
+    Cualquier visitante puede anotarse sin login. Identificamos por
+    phone_number. Si el documento ya pertenece a un Client existente,
+    asociamos automáticamente.
+    """
+    branch_id = serializers.IntegerField()
+    service_id = serializers.IntegerField()
+    staff_id = serializers.IntegerField(required=False, allow_null=True)
+    preferred_date = serializers.DateField()
+    preferred_time_start = serializers.TimeField(required=False, allow_null=True)
+    preferred_time_end = serializers.TimeField(required=False, allow_null=True)
+
+    phone_number = serializers.RegexField(
+        regex=r'^\+[1-9]\d{6,14}$',
+        error_messages={
+            'invalid': 'Formato de teléfono inválido. Use formato internacional: +51987654321'
+        }
+    )
+    first_name = serializers.CharField(min_length=2, max_length=100)
+    notes = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_preferred_date(self, value):
+        if value < timezone.now().date():
+            raise serializers.ValidationError(
+                'No se puede pedir una fecha pasada.'
+            )
+        if value > (timezone.now().date() + timedelta(days=60)):
+            raise serializers.ValidationError(
+                'No se puede pedir con más de 60 días de anticipación.'
+            )
+        return value
+
+    def validate(self, attrs):
+        branch_id = attrs['branch_id']
+        service_id = attrs['service_id']
+        staff_id = attrs.get('staff_id')
+
+        # Verificar consistencia: el servicio pertenece a la sucursal
+        try:
+            service = Service.objects.get(
+                pk=service_id, branch_id=branch_id, is_active=True,
+            )
+            attrs['_service'] = service
+        except Service.DoesNotExist:
+            raise serializers.ValidationError({
+                'service_id': 'Servicio no disponible en esta sucursal'
+            })
+
+        # Si especifica staff, debe estar activo en la sucursal y ofrecer el servicio
+        if staff_id:
+            try:
+                staff = StaffMember.objects.get(
+                    pk=staff_id, branches=branch_id, is_active=True,
+                )
+                attrs['_staff'] = staff
+            except StaffMember.DoesNotExist:
+                raise serializers.ValidationError({
+                    'staff_id': 'Profesional no disponible en esta sucursal'
+                })
+            if not StaffService.objects.filter(
+                staff=staff, service=service, is_active=True,
+            ).exists():
+                raise serializers.ValidationError({
+                    'staff_id': 'Este profesional no ofrece el servicio seleccionado'
+                })
+        else:
+            attrs['_staff'] = None
+
+        # Coherencia de time range
+        ts = attrs.get('preferred_time_start')
+        te = attrs.get('preferred_time_end')
+        if (ts and not te) or (te and not ts):
+            raise serializers.ValidationError(
+                'Si especificas un rango horario, ambos extremos son requeridos.'
+            )
+        if ts and te and ts >= te:
+            raise serializers.ValidationError(
+                'preferred_time_end debe ser posterior a preferred_time_start.'
+            )
+
+        return attrs
+
+
+class WaitlistEntrySerializer(serializers.ModelSerializer):
+    """Serializer de salida para mostrar una entry de waitlist."""
+    branch_name = serializers.CharField(source='branch.name', read_only=True)
+    service_name = serializers.CharField(source='service.name', read_only=True)
+    staff_name = serializers.CharField(
+        source='staff.full_name', read_only=True, default=None,
+    )
+
+    class Meta:
+        model = WaitlistEntry
+        fields = [
+            'id', 'branch_name', 'service_name', 'staff_name',
+            'phone_number', 'first_name',
+            'preferred_date', 'preferred_time_start', 'preferred_time_end',
+            'status', 'created_at', 'notified_at',
+        ]
+        read_only_fields = ['id', 'status', 'created_at', 'notified_at']
