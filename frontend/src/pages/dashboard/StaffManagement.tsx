@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import apiClient from '@/api/client'
-import { Button, Input } from '@/components/ui'
+import toast from 'react-hot-toast'
+import { Users, AlertTriangle } from 'lucide-react'
+import apiClient, { getApiErrorMessage } from '@/api/client'
+import { Button, EmptyState, Input, Modal, Skeleton, Spinner } from '@/components/ui'
 
 interface BranchInfo {
   id: number
@@ -265,16 +267,16 @@ export default function StaffManagement() {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'staff'] })
       closeModal()
     },
-    onError: (error: any) => {
-      const errorData = error.response?.data
-      if (errorData?.document_number) {
-        setErrors({ document_number: errorData.document_number })
-      } else {
-        const message = typeof errorData?.error === 'string'
-          ? errorData.error
-          : errorData?.error?.message || 'Error al crear profesional'
-        setErrors({ general: message })
+    onError: (error: unknown) => {
+      // Mostrar error específico de documento si viene en el field
+      const data = (error as any)?.response?.data
+      if (data?.document_number) {
+        setErrors({ document_number: data.document_number })
+        return
       }
+      const message = getApiErrorMessage(error, 'Error al crear profesional')
+      setErrors({ general: message })
+      toast.error(message)
     },
   })
 
@@ -288,12 +290,10 @@ export default function StaffManagement() {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'staff'] })
       closeModal()
     },
-    onError: (error: any) => {
-      const errorData = error.response?.data?.error
-      const message = typeof errorData === 'string'
-        ? errorData
-        : errorData?.message || 'Error al actualizar profesional'
+    onError: (error: unknown) => {
+      const message = getApiErrorMessage(error, 'Error al actualizar profesional')
       setErrors({ general: message })
+      toast.error(message)
     },
   })
 
@@ -310,13 +310,12 @@ export default function StaffManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'staff'] })
       closeModal()
+      toast.success('Perfil actualizado')
     },
-    onError: (error: any) => {
-      const errorData = error.response?.data?.error
-      const message = typeof errorData === 'string'
-        ? errorData
-        : errorData?.message || 'Error al actualizar perfil'
+    onError: (error: unknown) => {
+      const message = getApiErrorMessage(error, 'Error al actualizar perfil')
       setErrors({ general: message })
+      toast.error(message)
     },
   })
 
@@ -329,12 +328,10 @@ export default function StaffManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'staff'] })
       closeModal()
+      toast.success('Profesional agregado a la sucursal')
     },
-    onError: (error: any) => {
-      const errorData = error.response?.data?.error
-      const message = typeof errorData === 'string'
-        ? errorData
-        : errorData?.message || 'Error al agregar profesional'
+    onError: (error: unknown) => {
+      const message = getApiErrorMessage(error, 'Error al agregar profesional')
       setErrors({ general: message })
     },
   })
@@ -857,10 +854,24 @@ export default function StaffManagement() {
     )
   }
 
+  // Modal de confirmación de eliminación (reemplaza confirm() nativo)
+  const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null)
+
   const handleDelete = (staff: Staff) => {
-    if (confirm(`¿Estas seguro de eliminar a "${staff.first_name} ${staff.last_name}"?`)) {
-      deleteStaff.mutate(staff.id)
-    }
+    setStaffToDelete(staff)
+  }
+
+  const confirmDelete = () => {
+    if (!staffToDelete) return
+    deleteStaff.mutate(staffToDelete.id, {
+      onSuccess: () => {
+        toast.success(`${staffToDelete.first_name} eliminado/a`)
+        setStaffToDelete(null)
+      },
+      onError: (err) => {
+        toast.error(getApiErrorMessage(err, 'No pudimos eliminar al profesional'))
+      },
+    })
   }
 
   // Manejar seleccion de foto
@@ -919,10 +930,12 @@ export default function StaffManagement() {
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-500 mb-4">Error al cargar el equipo</p>
-        <p className="text-gray-500 text-sm">Verifica que tengas permisos para acceder.</p>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Error al cargar el equipo"
+        description="Verifica que tengas permisos para acceder o intenta de nuevo."
+        tone="error"
+      />
     )
   }
 
@@ -931,24 +944,26 @@ export default function StaffManagement() {
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Equipo de Trabajo</h2>
-          <p className="text-sm text-gray-500">Gestiona los profesionales de tu negocio</p>
+          <h2 className="text-lg font-semibold text-neutral-900">Equipo de trabajo</h2>
+          <p className="text-sm text-neutral-500">Gestiona los profesionales de tu negocio</p>
         </div>
-        <Button onClick={() => openModal()}>+ Nuevo Profesional</Button>
+        <Button onClick={() => openModal()}>+ Nuevo profesional</Button>
       </div>
 
       {/* Lista de profesionales agrupados por sucursal */}
       {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} variant="card" className="h-32" />
+          ))}
         </div>
       ) : staffList.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <div className="text-4xl mb-4">👥</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No hay profesionales</h3>
-          <p className="text-gray-500 mb-4">Agrega profesionales para que puedan recibir citas</p>
-          <Button onClick={() => openModal()}>Agregar primer profesional</Button>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No hay profesionales"
+          description="Agrega profesionales para que puedan recibir citas."
+          action={<Button onClick={() => openModal()}>Agregar primer profesional</Button>}
+        />
       ) : (
         <div className="space-y-8">
           {staffByBranch.map(([key, group]) => (
@@ -1181,7 +1196,7 @@ export default function StaffManagement() {
                   />
                   {isDNILookingUp && (
                     <div className="absolute right-3 top-8 flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                      <Spinner size="sm" className="text-primary-600" />
                       <span className="text-xs text-gray-500">Consultando RENIEC...</span>
                     </div>
                   )}
@@ -1335,7 +1350,7 @@ export default function StaffManagement() {
 
                 {isLoadingServices && (
                   <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3 flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+                    <Spinner size="sm" className="text-primary-600" />
                     Cargando servicios...
                   </div>
                 )}
@@ -1533,7 +1548,7 @@ export default function StaffManagement() {
                       <h4 className="text-sm font-semibold text-gray-900 mb-3">Horario de trabajo</h4>
                       {branchTabsData[activeBranchTab].isLoadingSchedule ? (
                         <div className="flex justify-center py-4">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                          <Spinner size="md" className="text-primary-600" />
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -1623,7 +1638,7 @@ export default function StaffManagement() {
                       <h4 className="text-sm font-semibold text-gray-900 mb-3">Servicios que ofrece</h4>
                       {branchTabsData[activeBranchTab].isLoadingServices ? (
                         <div className="flex justify-center py-4">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+                          <Spinner size="md" className="text-primary-600" />
                         </div>
                       ) : branchTabsData[activeBranchTab].services.length > 0 ? (
                         <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto">
@@ -1661,12 +1676,12 @@ export default function StaffManagement() {
                 ) : activeBranchTab && branchTabsData[activeBranchTab] === undefined ? (
                   <div className="flex-1 flex items-center justify-center py-12">
                     <div className="text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                      <p className="text-sm text-gray-500">Cargando datos de la sucursal...</p>
+                      <Spinner size="lg" className="text-primary-600 mb-4" />
+                      <p className="text-sm text-neutral-500">Cargando datos de la sucursal…</p>
                     </div>
                   </div>
                 ) : !activeBranchTab ? (
-                  <div className="p-6 text-center text-gray-500">
+                  <div className="p-6 text-center text-neutral-500">
                     <p>Este profesional no tiene sucursales asignadas.</p>
                     <p className="text-sm mt-2">Asigna sucursales al profesional primero.</p>
                   </div>
@@ -1676,6 +1691,43 @@ export default function StaffManagement() {
           </div>
         </div>
       )}
+
+      {/* Modal de confirmación de eliminación */}
+      <Modal
+        open={!!staffToDelete}
+        onClose={() => !deleteStaff.isPending && setStaffToDelete(null)}
+        title="¿Eliminar este profesional?"
+        description="Sus citas históricas se preservarán, pero ya no podrá recibir nuevas reservas."
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setStaffToDelete(null)}
+              disabled={deleteStaff.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="danger"
+              loading={deleteStaff.isPending}
+              loadingText="Eliminando…"
+              onClick={confirmDelete}
+            >
+              Eliminar
+            </Button>
+          </>
+        }
+      >
+        {staffToDelete && (
+          <p className="text-sm text-neutral-700">
+            <span className="font-medium">
+              {staffToDelete.first_name} {staffToDelete.last_name}
+            </span>{' '}
+            será dado de baja del negocio.
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

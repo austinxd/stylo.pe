@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import apiClient from '@/api/client'
-import { Button, Input } from '@/components/ui'
+import toast from 'react-hot-toast'
+import { AlertTriangle } from 'lucide-react'
+import apiClient, { getApiErrorMessage } from '@/api/client'
+import { Button, EmptyState, Input, Spinner } from '@/components/ui'
 import CategoryIcon from '@/components/ui/CategoryIcon'
 
 interface Category {
@@ -141,11 +143,13 @@ export default function BusinessSettings() {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'my-business'] })
       setSuccessMessage('Cambios guardados correctamente')
       setEditSection(null)
+      toast.success('Cambios guardados')
       setTimeout(() => setSuccessMessage(''), 3000)
     },
-    onError: (error: any) => {
-      const message = error.response?.data?.error || 'Error al guardar los cambios'
+    onError: (error: unknown) => {
+      const message = getApiErrorMessage(error, 'Error al guardar los cambios')
       setErrorMessage(message)
+      toast.error(message)
       setTimeout(() => setErrorMessage(''), 5000)
     },
   })
@@ -292,24 +296,19 @@ export default function BusinessSettings() {
 
   if (error) {
     return (
-      <div className="min-h-[400px] flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
-            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error al cargar la configuracion</h3>
-          <p className="text-gray-500">Verifica que tengas permisos para acceder a esta seccion.</p>
-        </div>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Error al cargar la configuración"
+        description="Verifica que tengas permisos para acceder a esta sección."
+        tone="error"
+      />
     )
   }
 
   if (isLoading) {
     return (
       <div className="min-h-[400px] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600"></div>
+        <Spinner size="lg" className="text-primary-600" />
       </div>
     )
   }
@@ -397,7 +396,7 @@ export default function BusinessSettings() {
                 >
                   {savingCoverPosition ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                      <Spinner size="sm" className="text-neutral-600" />
                       Guardando...
                     </>
                   ) : 'Guardar'}
@@ -427,7 +426,7 @@ export default function BusinessSettings() {
               >
                 {uploadingCover ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <Spinner size="sm" className="text-white" />
                     Subiendo...
                   </>
                 ) : (
@@ -471,7 +470,7 @@ export default function BusinessSettings() {
                 className="absolute inset-0 rounded-2xl bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 {uploadingLogo ? (
-                  <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <Spinner size="md" className="text-white" />
                 ) : (
                   <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />

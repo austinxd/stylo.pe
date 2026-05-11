@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import apiClient from '@/api/client'
-import { Button, Input } from '@/components/ui'
+import toast from 'react-hot-toast'
+import { Building2, AlertTriangle } from 'lucide-react'
+import apiClient, { getApiErrorMessage } from '@/api/client'
+import { Button, EmptyState, Input, Modal, Skeleton } from '@/components/ui'
 
 // Ciudades principales de Peru
 const CITIES_PERU = [
@@ -310,12 +312,8 @@ export default function BranchesManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     },
-    onError: (error: any) => {
-      const errorData = error.response?.data?.error
-      const message = typeof errorData === 'string'
-        ? errorData
-        : errorData?.message || 'Error al marcar como principal'
-      alert(message)
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, 'Error al marcar como principal'))
     },
   })
 
@@ -422,7 +420,7 @@ export default function BranchesManagement() {
       setModalPhotos([...modalPhotos, response.data])
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al subir la foto')
+      toast.error(getApiErrorMessage(error, 'Error al subir la foto'))
     } finally {
       setIsUploadingModalPhoto(false)
       if (modalGalleryInputRef.current) {
@@ -440,7 +438,7 @@ export default function BranchesManagement() {
       setModalPhotos(modalPhotos.filter(p => p.id !== photoId))
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al eliminar la foto')
+      toast.error(getApiErrorMessage(error, 'Error al eliminar la foto'))
     }
   }
 
@@ -455,7 +453,7 @@ export default function BranchesManagement() {
       })))
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al marcar como portada')
+      toast.error(getApiErrorMessage(error, 'Error al marcar como portada'))
     }
   }
 
@@ -693,10 +691,23 @@ export default function BranchesManagement() {
     }
   }
 
+  const [branchToDelete, setBranchToDelete] = useState<Branch | null>(null)
+
   const handleDelete = (branch: Branch) => {
-    if (confirm(`¿Estas seguro de eliminar la sucursal "${branch.name}"? Esta accion no se puede deshacer.`)) {
-      deleteBranch.mutate(branch.id)
-    }
+    setBranchToDelete(branch)
+  }
+
+  const confirmDeleteBranch = () => {
+    if (!branchToDelete) return
+    deleteBranch.mutate(branchToDelete.id, {
+      onSuccess: () => {
+        toast.success('Sucursal eliminada')
+        setBranchToDelete(null)
+      },
+      onError: (err) => {
+        toast.error(getApiErrorMessage(err, 'No pudimos eliminar la sucursal'))
+      },
+    })
   }
 
   const uploadCoverImage = async (branchId: number, file: File) => {
@@ -709,7 +720,7 @@ export default function BranchesManagement() {
       })
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al subir la imagen')
+      toast.error(getApiErrorMessage(error, 'Error al subir la imagen'))
     } finally {
       setUploadingImage(null)
     }
@@ -760,7 +771,7 @@ export default function BranchesManagement() {
       setGalleryPhotos([...galleryPhotos, response.data])
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al subir la foto')
+      toast.error(getApiErrorMessage(error, 'Error al subir la foto'))
     } finally {
       setIsUploadingPhoto(false)
       if (galleryInputRef.current) {
@@ -779,7 +790,7 @@ export default function BranchesManagement() {
       setGalleryPhotos(galleryPhotos.filter(p => p.id !== photoId))
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al eliminar la foto')
+      toast.error(getApiErrorMessage(error, 'Error al eliminar la foto'))
     }
   }
   void _handleDeletePhoto // TODO: wire up to UI
@@ -795,17 +806,19 @@ export default function BranchesManagement() {
       })))
       queryClient.invalidateQueries({ queryKey: ['dashboard', 'branches'] })
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Error al marcar como portada')
+      toast.error(getApiErrorMessage(error, 'Error al marcar como portada'))
     }
   }
   void _handleSetCover // TODO: wire up to UI
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-500 mb-4">Error al cargar las sucursales</p>
-        <p className="text-gray-500 text-sm">Verifica que tengas permisos para acceder.</p>
-      </div>
+      <EmptyState
+        icon={AlertTriangle}
+        title="Error al cargar las sucursales"
+        description="Verifica que tengas permisos para acceder o intenta de nuevo."
+        tone="error"
+      />
     )
   }
 
@@ -862,33 +875,24 @@ export default function BranchesManagement() {
         </div>
       )}
 
-      {/* Lista de sucursales estilo Planity */}
+      {/* Lista de sucursales */}
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <div className="flex flex-col items-center gap-3">
-            <div className="animate-spin rounded-full h-10 w-10 border-[3px] border-gray-200 border-t-primary-600"></div>
-            <p className="text-sm text-gray-500">Cargando sucursales...</p>
-          </div>
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-48" variant="card" />
+          ))}
         </div>
       ) : branches.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center">
-          <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Sin sucursales</h3>
-          <p className="text-gray-500 mb-6 max-w-sm mx-auto">
-            Crea tu primera sucursal para comenzar a recibir reservas de tus clientes.
-          </p>
-          <button
-            onClick={() => openModal()}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 transition-all"
-          >
-            {Icons.plus}
-            <span>Crear primera sucursal</span>
-          </button>
-        </div>
+        <EmptyState
+          icon={Building2}
+          title="Sin sucursales"
+          description="Crea tu primera sucursal para comenzar a recibir reservas de tus clientes."
+          action={
+            <Button onClick={() => openModal()} icon={Icons.plus}>
+              Crear primera sucursal
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-4">
           {branches.map((branch) => (
@@ -1662,6 +1666,39 @@ export default function BranchesManagement() {
         </div>
       )}
 
+      {/* Modal de confirmación de eliminación de sucursal */}
+      <Modal
+        open={!!branchToDelete}
+        onClose={() => !deleteBranch.isPending && setBranchToDelete(null)}
+        title="¿Eliminar esta sucursal?"
+        description="Las citas históricas se preservarán, pero ya no podrá recibir nuevas reservas. Esta acción no se puede deshacer."
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => setBranchToDelete(null)}
+              disabled={deleteBranch.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="danger"
+              loading={deleteBranch.isPending}
+              loadingText="Eliminando…"
+              onClick={confirmDeleteBranch}
+            >
+              Eliminar sucursal
+            </Button>
+          </>
+        }
+      >
+        {branchToDelete && (
+          <p className="text-sm text-neutral-700">
+            <span className="font-medium">{branchToDelete.name}</span> será eliminada permanentemente.
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

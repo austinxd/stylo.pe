@@ -1,12 +1,20 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import businessApi, { type Review } from '@/api/business'
 import servicesApi from '@/api/services'
 import bookingApi, { BookingSummary, AppointmentConfirmation } from '@/api/booking'
-import { getMediaUrl } from '@/api/client'
+import { getApiErrorMessage, getMediaUrl } from '@/api/client'
 import { Logo, Button, Input } from '@/components/ui'
+import { PhotoLightbox } from '@/components/ui/PhotoLightbox'
 import type { Service, StaffProvider, AvailabilitySlot, BranchPhoto } from '@/types'
+import {
+  clearBookingState,
+  loadBookingState,
+  useBookingPersistence,
+  INITIAL_CLIENT_DATA,
+} from '@/features/booking'
 import {
   format,
   parseISO,
@@ -90,93 +98,6 @@ const Icons = {
 
 type Step = 'service' | 'staff' | 'datetime' | 'client' | 'otp' | 'success'
 
-// Lightbox component for viewing photos
-const PhotoLightbox = ({
-  photos,
-  currentIndex,
-  onClose,
-  onNext,
-  onPrev,
-}: {
-  photos: { image: string; caption?: string }[]
-  currentIndex: number
-  onClose: () => void
-  onNext: () => void
-  onPrev: () => void
-}) => {
-  // Handle keyboard navigation
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-      if (e.key === 'ArrowRight') onNext()
-      if (e.key === 'ArrowLeft') onPrev()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, onNext, onPrev])
-
-  const photo = photos[currentIndex]
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center"
-      onClick={onClose}
-    >
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 p-2 text-white/80 hover:text-white transition-colors z-10"
-      >
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
-
-      {/* Counter */}
-      <div className="absolute top-4 left-4 text-white/80 text-sm font-medium">
-        {currentIndex + 1} / {photos.length}
-      </div>
-
-      {/* Navigation arrows */}
-      {photos.length > 1 && (
-        <>
-          <button
-            onClick={(e) => { e.stopPropagation(); onPrev() }}
-            className="absolute left-4 p-3 text-white/80 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition-all"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onNext() }}
-            className="absolute right-4 p-3 text-white/80 hover:text-white bg-black/30 hover:bg-black/50 rounded-full transition-all"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-            </svg>
-          </button>
-        </>
-      )}
-
-      {/* Image */}
-      <div className="max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-        <img
-          src={getMediaUrl(photo.image) || ''}
-          alt={photo.caption || 'Foto'}
-          className="max-w-full max-h-[85vh] object-contain rounded-lg"
-        />
-        {photo.caption && (
-          <p className="text-white/80 text-center mt-3 text-sm">{photo.caption}</p>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Import React for useEffect in lightbox
-import * as React from 'react'
-
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
 // Helper para formatear nombre de profesional como "FirstName L."
@@ -219,11 +140,30 @@ const GENDER_LABELS: Record<string, { title: string; icon: JSX.Element }> = {
 export default function BookingFlow() {
   const { businessSlug, branchSlug } = useParams<{ businessSlug: string; branchSlug: string }>()
 
+  // Cargar estado persistido al inicio (lazy initializer corre solo una vez)
+  const persistedState = useMemo(() => {
+    if (!businessSlug || !branchSlug) return null
+    return loadBookingState(businessSlug, branchSlug)
+  }, [businessSlug, branchSlug])
+
   // Estado del flujo
-  const [step, setStep] = useState<Step>('service')
+  const [step, setStep] = useState<Step>(() => {
+    // Sólo restaurar steps "intermedios", no 'success' (cita ya creada)
+    if (persistedState && persistedState.step !== 'success') {
+      // No restauramos a 'otp' porque el OTP es one-time; volvemos a 'client'
+      return persistedState.step === 'otp' ? 'client' : persistedState.step
+    }
+    return 'service'
+  })
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [selectedStaff, setSelectedStaff] = useState<StaffProvider | null>(null)
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date | null>(() => {
+    if (persistedState?.selectedDateISO) {
+      const d = new Date(persistedState.selectedDateISO)
+      return isNaN(d.getTime()) ? new Date() : d
+    }
+    return new Date()
+  })
   const [_selectedTime, setSelectedTime] = useState<string | null>(null)
   const [notes] = useState('')
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -232,25 +172,45 @@ export default function BookingFlow() {
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null)
 
-  // Datos del cliente
-  const [clientData, setClientData] = useState({
-    phone_number: '+51',
-    document_type: 'dni' as 'dni' | 'pasaporte' | 'ce',
-    document_number: '',
-    first_name: '',
-    last_name_paterno: '',
-    last_name_materno: '',
-    email: '',
-    gender: 'M' as 'M' | 'F',
-    birth_date: '',
+  // Datos del cliente (restaurados de sessionStorage si existen)
+  const [clientData, setClientData] = useState(() => {
+    return persistedState?.clientData ?? INITIAL_CLIENT_DATA
   })
 
   // Foto del cliente (oculta - solo para uso interno del negocio)
+  // No persiste: File no es serializable
   const [clientPhoto, setClientPhoto] = useState<File | null>(null)
 
   // Estado de búsqueda de cliente
-  const [clientLookupDone, setClientLookupDone] = useState(false)
-  const [isExistingClient, setIsExistingClient] = useState(false)
+  const [clientLookupDone, setClientLookupDone] = useState(
+    persistedState?.clientLookupDone ?? false,
+  )
+  const [isExistingClient, setIsExistingClient] = useState(
+    persistedState?.isExistingClient ?? false,
+  )
+
+  // Persistir cambios automáticamente (debounced 300ms en el hook)
+  useBookingPersistence({
+    state: {
+      step,
+      selectedServiceId: selectedService?.id ?? persistedState?.selectedServiceId ?? null,
+      selectedStaffId: selectedStaff?.id ?? persistedState?.selectedStaffId ?? null,
+      selectedDateISO: selectedDate ? selectedDate.toISOString() : null,
+      clientData,
+      isExistingClient,
+      clientLookupDone,
+      businessSlug: businessSlug ?? '',
+      branchSlug: branchSlug ?? '',
+    },
+    enabled: !!businessSlug && !!branchSlug && step !== 'success',
+  })
+
+  // Al completar la reserva, limpiar el storage
+  useEffect(() => {
+    if (step === 'success' && businessSlug && branchSlug) {
+      clearBookingState(businessSlug, branchSlug)
+    }
+  }, [step, businessSlug, branchSlug])
 
   // OTP
   const [otpCode, setOtpCode] = useState('')
@@ -326,6 +286,23 @@ export default function BookingFlow() {
     enabled: !!branch?.id && !!selectedService?.id,
   })
 
+  // Restaurar selectedService cuando services cargan (estado persistido)
+  useEffect(() => {
+    if (selectedService) return
+    if (!services || !persistedState?.selectedServiceId) return
+    const found = services.find((s) => s.id === persistedState.selectedServiceId)
+    if (found) setSelectedService(found)
+  }, [services, persistedState, selectedService])
+
+  // Restaurar selectedStaff cuando serviceDetail cargue (estado persistido)
+  useEffect(() => {
+    if (selectedStaff) return
+    if (!serviceDetail || !persistedState?.selectedStaffId) return
+    const providers = serviceDetail.staff_providers ?? []
+    const found = providers.find((p) => p.id === persistedState.selectedStaffId)
+    if (found) setSelectedStaff(found)
+  }, [serviceDetail, persistedState, selectedStaff])
+
   // Calcular el inicio de la semana para cargar disponibilidad
   const weekStartDate = useMemo(() => {
     if (!selectedDate) return null
@@ -358,8 +335,10 @@ export default function BookingFlow() {
       setStep('client')
       setError(null)
     },
-    onError: (err: Error) => {
-      setError(err.message || 'Error al iniciar la reserva')
+    onError: (err: unknown) => {
+      const msg = getApiErrorMessage(err, 'Error al iniciar la reserva')
+      setError(msg)
+      toast.error(msg)
     },
   })
 
@@ -372,9 +351,12 @@ export default function BookingFlow() {
       if (data.debug_otp) {
         setDebugOtp(data.debug_otp)
       }
+      toast.success('Código enviado por WhatsApp')
     },
-    onError: (err: Error) => {
-      setError(err.message || 'Error al enviar el código')
+    onError: (err: unknown) => {
+      const msg = getApiErrorMessage(err, 'Error al enviar el código')
+      setError(msg)
+      toast.error(msg)
     },
   })
 
@@ -385,9 +367,12 @@ export default function BookingFlow() {
       setConfirmedAppointment(data.appointment)
       setStep('success')
       setError(null)
+      toast.success('¡Reserva confirmada!')
     },
-    onError: (err: Error) => {
-      setError(err.message || 'Código incorrecto')
+    onError: (err: unknown) => {
+      const msg = getApiErrorMessage(err, 'Código incorrecto')
+      setError(msg)
+      toast.error(msg)
     },
   })
 
@@ -399,9 +384,12 @@ export default function BookingFlow() {
       if (data.debug_otp) {
         setDebugOtp(data.debug_otp)
       }
+      toast.success('Nuevo código enviado')
     },
-    onError: (err: Error) => {
-      setError(err.message || 'Error al reenviar el código')
+    onError: (err: unknown) => {
+      const msg = getApiErrorMessage(err, 'Error al reenviar el código')
+      setError(msg)
+      toast.error(msg)
     },
   })
 
@@ -432,8 +420,10 @@ export default function BookingFlow() {
         }
       }
     },
-    onError: (err: Error) => {
-      setError(err.message || 'Error al buscar cliente')
+    onError: (err: unknown) => {
+      const msg = getApiErrorMessage(err, 'Error al buscar cliente')
+      setError(msg)
+      toast.error(msg)
     },
   })
 
