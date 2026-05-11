@@ -43,10 +43,14 @@ class AvailabilityService:
         # Verificar fecha especial
         try:
             special = SpecialDate.objects.get(branch=self.branch, date=date)
-            if special.date_type == 'closed':
+            # Feriados y cierres explícitos bloquean reservas
+            if special.date_type in ('closed', 'holiday'):
                 return False, None, None
             if special.date_type == 'special_hours':
-                return True, special.opening_time, special.closing_time
+                if special.opening_time and special.closing_time:
+                    return True, special.opening_time, special.closing_time
+                # Datos incompletos: tratar como cerrado para no servir horario inválido
+                return False, None, None
         except SpecialDate.DoesNotExist:
             pass
 
@@ -116,6 +120,12 @@ class AvailabilityService:
             List de slots disponibles
         """
         slots = []
+
+        # Si la sucursal está cerrada en esta fecha (feriado, evento especial),
+        # no generar slots independientemente de los horarios regulares.
+        branch_open, _, _ = self.is_branch_open(date)
+        if not branch_open:
+            return slots
 
         # Obtener duración del servicio
         service_duration = service.total_duration

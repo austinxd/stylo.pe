@@ -15,6 +15,7 @@ phonenumbers>=8.13,<9.0
 # Celery para tareas asíncronas
 celery>=5.3,<6.0
 redis>=5.0,<6.0
+django-redis>=5.4,<6.0
 
 # Utilidades
 python-decouple>=3.8,<4.0

@@ -7,10 +7,19 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 
 from .models import Appointment, AppointmentReminder
+from .services import create_appointment_atomic, AppointmentConflictError
+from common.throttling import (
+    BookingSendOTPIPThrottle,
+    BookingVerifyOTPIPThrottle,
+    OTPSendPhoneThrottle,
+    OTPVerifyPhoneThrottle,
+    DocumentCheckThrottle,
+)
 from .serializers import (
     AppointmentSerializer,
     AppointmentListSerializer,
@@ -104,7 +113,12 @@ class PublicBookingViewSet(viewsets.ViewSet):
             }
         })
 
-    @action(detail=False, methods=['post'], url_path='lookup-client')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='lookup-client',
+        throttle_classes=[DocumentCheckThrottle],
+    )
     def lookup_client(self, request):
         """
         Buscar cliente por documento.
@@ -185,7 +199,12 @@ class PublicBookingViewSet(viewsets.ViewSet):
             'gender': result.get('gender', 'M'),
         })
 
-    @action(detail=False, methods=['post'], url_path='send-otp')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='send-otp',
+        throttle_classes=[BookingSendOTPIPThrottle, OTPSendPhoneThrottle],
+    )
     def send_otp(self, request):
         """
         Paso 2: Enviar datos del cliente y solicitar OTP.
@@ -237,7 +256,12 @@ class PublicBookingViewSet(viewsets.ViewSet):
 
         return Response(response_data)
 
-    @action(detail=False, methods=['post'], url_path='verify-otp')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='verify-otp',
+        throttle_classes=[BookingVerifyOTPIPThrottle, OTPVerifyPhoneThrottle],
+    )
     def verify_otp(self, request):
         """
         Paso 3: Verificar OTP y confirmar reserva.
@@ -312,29 +336,23 @@ class PublicBookingViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Calcular hora de fin
-        end_datetime = session.start_datetime + timedelta(minutes=service.total_duration)
-
-        # Crear la cita
-        appointment = Appointment.objects.create(
-            branch_id=session.branch_id,
-            client=client,
-            staff_id=session.staff_id,
-            service_id=session.service_id,
-            start_datetime=session.start_datetime,
-            end_datetime=end_datetime,
-            price=price,
-            notes=session.notes,
-            status='confirmed'
-        )
-
-        # Crear recordatorio (24h antes)
-        reminder_time = appointment.start_datetime - timedelta(hours=24)
-        if reminder_time > timezone.now():
-            AppointmentReminder.objects.create(
-                appointment=appointment,
-                reminder_type='whatsapp',
-                scheduled_at=reminder_time
+        # Crear la cita con lock atómico (evita double-booking)
+        try:
+            appointment = create_appointment_atomic(
+                branch_id=session.branch_id,
+                client=client,
+                staff_id=session.staff_id,
+                service=service,
+                start_datetime=session.start_datetime,
+                price=price,
+                notes=session.notes,
+                status='confirmed',
+                create_reminder=True,
+            )
+        except AppointmentConflictError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_409_CONFLICT
             )
 
         # Actualizar sesión
@@ -351,7 +369,12 @@ class PublicBookingViewSet(viewsets.ViewSet):
             'appointment': PublicAppointmentConfirmationSerializer(appointment).data
         }, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['post'], url_path='resend-otp')
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='resend-otp',
+        throttle_classes=[BookingSendOTPIPThrottle],
+    )
     def resend_otp(self, request):
         """
         Reenviar OTP si el anterior expiró o no llegó.
@@ -407,24 +430,40 @@ class DashboardAppointmentViewSet(viewsets.ModelViewSet):
     serializer_class = AppointmentSerializer
 
     def get_queryset(self):
-        """Retorna las citas según el rol del usuario."""
-        user = self.request.user
+        """Retorna las citas según el rol del usuario (multi-tenant scoping)."""
+        from common.scoping import scope_appointments
+        return scope_appointments(Appointment.objects.all(), self.request.user)
 
-        if user.role == 'super_admin':
-            return Appointment.objects.all()
+    def create(self, request, *args, **kwargs):
+        """
+        Crear cita desde el dashboard con lock atómico contra double-booking.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        if user.role == 'business_owner':
-            business_ids = user.owned_businesses.values_list('id', flat=True)
-            return Appointment.objects.filter(branch__business_id__in=business_ids)
+        try:
+            appointment = create_appointment_atomic(
+                branch_id=data['branch'].id if hasattr(data['branch'], 'id') else data['branch'],
+                client=data['client'],
+                staff_id=data['staff'].id if hasattr(data['staff'], 'id') else data['staff'],
+                service=data['service'],
+                start_datetime=data['start_datetime'],
+                price=data['price'],
+                notes=data.get('notes', ''),
+                status=data.get('status', 'confirmed'),
+                create_reminder=True,
+            )
+        except AppointmentConflictError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_409_CONFLICT
+            )
 
-        if user.role == 'branch_manager':
-            branch_ids = user.managed_branches.values_list('id', flat=True)
-            return Appointment.objects.filter(branch_id__in=branch_ids)
-
-        if user.role == 'staff' and hasattr(user, 'staff_profile'):
-            return Appointment.objects.filter(staff=user.staff_profile)
-
-        return Appointment.objects.none()
+        return Response(
+            AppointmentSerializer(appointment).data,
+            status=status.HTTP_201_CREATED
+        )
 
     @action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):

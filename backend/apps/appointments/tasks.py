@@ -43,7 +43,7 @@ def send_appointment_reminders():
                 result = whatsapp.send_appointment_reminder(
                     phone_number=client.user.phone_number,
                     client_name=client.first_name,
-                    service_name=appointment.service.name,
+                    service_name=appointment.service_display_name,
                     datetime_str=appointment.start_datetime.strftime('%d/%m/%Y %H:%M'),
                     branch_name=appointment.branch.name
                 )
@@ -85,7 +85,7 @@ def send_appointment_confirmation(appointment_id: int):
         result = whatsapp.send_appointment_confirmation(
             phone_number=appointment.client.user.phone_number,
             client_name=appointment.client.first_name,
-            service_name=appointment.service.name,
+            service_name=appointment.service_display_name,
             staff_name=appointment.staff.full_name,
             datetime_str=appointment.start_datetime.strftime('%d/%m/%Y %H:%M'),
             branch_name=appointment.branch.name

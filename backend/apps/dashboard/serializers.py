@@ -164,7 +164,7 @@ class DashboardAppointmentSerializer(serializers.ModelSerializer):
     client_phone = serializers.CharField(source='client.phone_number', read_only=True)
     client_photo = serializers.ImageField(source='client.photo', read_only=True)
     staff_name = serializers.SerializerMethodField()
-    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_name = serializers.CharField(source='service_display_name', read_only=True)
 
     def get_staff_name(self, obj):
         """Retorna el nombre del staff como 'Nombre I.' (solo primer nombre + inicial del apellido)."""

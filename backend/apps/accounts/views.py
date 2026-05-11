@@ -23,6 +23,13 @@ from .serializers import (
 )
 from .services import OTPService, WhatsAppService, OTPProviderService
 from .models import StaffMember, BusinessOwnerProfile
+from common.throttling import (
+    OTPSendIPThrottle,
+    OTPSendPhoneThrottle,
+    OTPVerifyIPThrottle,
+    OTPVerifyPhoneThrottle,
+    DocumentCheckThrottle,
+)
 
 
 class CheckPhoneView(APIView):
@@ -31,6 +38,7 @@ class CheckPhoneView(APIView):
     Verifica si un número de teléfono está registrado (sin enviar OTP).
     """
     permission_classes = [AllowAny]
+    throttle_classes = [OTPSendIPThrottle, OTPSendPhoneThrottle]
 
     def post(self, request):
         serializer = PhoneNumberSerializer(data=request.data)
@@ -59,6 +67,7 @@ class CheckDocumentView(APIView):
     POST /auth/document/check
     Verifica si existe una cuenta de profesional o dueño por documento.
     """
+    throttle_classes = [DocumentCheckThrottle]
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -192,6 +201,7 @@ class WhatsAppStartView(APIView):
     Inicia el proceso de autenticación enviando un OTP por WhatsApp.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [OTPSendIPThrottle, OTPSendPhoneThrottle]
 
     def post(self, request):
         serializer = PhoneNumberSerializer(data=request.data)
@@ -232,6 +242,7 @@ class WhatsAppVerifyView(APIView):
     - Si no existe: devuelve registration_token para completar registro.
     """
     permission_classes = [AllowAny]
+    throttle_classes = [OTPVerifyIPThrottle, OTPVerifyPhoneThrottle]
 
     def post(self, request):
         serializer = OTPVerifySerializer(data=request.data)
@@ -461,6 +472,8 @@ class PasswordResetRequestView(APIView):
     Busca el usuario y envia OTP a su WhatsApp registrado.
     """
     permission_classes = [AllowAny]
+    # Throttle por IP (no hay phone en el body, solo documento)
+    throttle_classes = [OTPSendIPThrottle, DocumentCheckThrottle]
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)

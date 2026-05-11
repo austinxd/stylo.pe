@@ -16,6 +16,17 @@ X_FRAME_OPTIONS = 'DENY'
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+SECURE_REFERRER_POLICY = 'same-origin'
+
+# HSTS: forzar HTTPS por 1 año. Subdominios incluidos.
+# IMPORTANTE: Sólo activar cuando estés seguro de que TODOS los subdominios
+# soportan HTTPS, porque preload no se puede revertir fácilmente.
+SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# Proxy SSL header (necesario si está detrás de nginx/load balancer)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # CSRF Trusted Origins
 CSRF_TRUSTED_ORIGINS = [

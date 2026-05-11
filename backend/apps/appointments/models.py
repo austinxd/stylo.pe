@@ -43,9 +43,27 @@ class Appointment(models.Model):
     )
     service = models.ForeignKey(
         Service,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='appointments',
-        verbose_name='Servicio'
+        verbose_name='Servicio',
+        help_text='Nullable: si el servicio es eliminado, la cita se preserva con el snapshot.'
+    )
+
+    # Snapshot del servicio al momento de la reserva.
+    # Se preserva si el Service es eliminado o renombrado, para mantener
+    # íntegros los reportes financieros y el historial de cliente.
+    service_name_snapshot = models.CharField(
+        'Nombre del servicio (snapshot)',
+        max_length=200,
+        blank=True,
+        default=''
+    )
+    service_duration_snapshot = models.PositiveIntegerField(
+        'Duración del servicio en minutos (snapshot)',
+        null=True,
+        blank=True,
     )
 
     # Horario
@@ -95,7 +113,25 @@ class Appointment(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.client} - {self.service.name} - {self.start_datetime}'
+        service_label = self.service.name if self.service else (self.service_name_snapshot or 'Servicio eliminado')
+        return f'{self.client} - {service_label} - {self.start_datetime}'
+
+    @property
+    def service_display_name(self):
+        """Nombre del servicio para mostrar (usa snapshot si el servicio fue eliminado)."""
+        if self.service:
+            return self.service.name
+        return self.service_name_snapshot or 'Servicio eliminado'
+
+    def save(self, *args, **kwargs):
+        # Capturar snapshot del servicio en cada save mientras exista la FK,
+        # para que el historial sea inmutable si el servicio cambia o se elimina.
+        if self.service_id and self.service:
+            if not self.service_name_snapshot:
+                self.service_name_snapshot = self.service.name
+            if self.service_duration_snapshot is None:
+                self.service_duration_snapshot = self.service.total_duration
+        super().save(*args, **kwargs)
 
     @property
     def duration_minutes(self):
@@ -121,12 +157,18 @@ class Appointment(models.Model):
         return self.start_datetime > timezone.now() + timezone.timedelta(hours=2)
 
     def cancel(self, cancelled_by: str, reason: str = ''):
-        """Cancela la cita."""
-        self.status = 'cancelled'
-        self.cancelled_at = timezone.now()
-        self.cancelled_by = cancelled_by
-        self.cancellation_reason = reason
-        self.save()
+        """Cancela la cita y marca sus recordatorios pendientes como cancelados."""
+        from django.db import transaction
+
+        with transaction.atomic():
+            self.status = 'cancelled'
+            self.cancelled_at = timezone.now()
+            self.cancelled_by = cancelled_by
+            self.cancellation_reason = reason
+            self.save()
+
+            # Cancelar recordatorios pendientes para que no se envíen
+            self.reminders.filter(status='pending').update(status='cancelled')
 
 
 class AppointmentReminder(models.Model):

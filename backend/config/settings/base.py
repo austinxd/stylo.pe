@@ -121,6 +121,31 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Caché
+# - Si django_redis está instalado, usa Redis (recomendado en producción
+#   y necesario para que el throttling sea consistente entre workers).
+# - Si no, fallback a LocMemCache (sólo para desarrollo: el rate limit
+#   no será compartido entre procesos).
+try:
+    import django_redis  # noqa: F401
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': config('REDIS_CACHE_URL', default='redis://localhost:6379/1'),
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            },
+            'KEY_PREFIX': 'stylo',
+        }
+    }
+except ImportError:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'stylo-locmem',
+        }
+    }
+
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -132,6 +157,23 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'common.pagination.StandardResultsSetPagination',
     'PAGE_SIZE': 20,
     'EXCEPTION_HANDLER': 'common.exceptions.custom_exception_handler',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        # Defaults conservadores para todos los endpoints anónimos/autenticados
+        'anon': '180/min',
+        'user': '300/min',
+        # Scopes específicos (usados por ScopedRateThrottle en views sensibles)
+        'otp_send_ip': '10/hour',          # Por IP del solicitante
+        'otp_send_phone': '5/hour',        # Por número de teléfono
+        'otp_verify_ip': '20/hour',        # Verificaciones por IP
+        'otp_verify_phone': '10/hour',     # Verificaciones por teléfono
+        'booking_send_otp_ip': '10/hour',
+        'booking_verify_otp_ip': '20/hour',
+        'document_check': '30/hour',       # Anti-enumeración de documentos
+    },
 }
 
 # JWT Configuration
@@ -191,6 +233,9 @@ except ImportError:
 # Culqi Configuration (Pasarela de pagos)
 CULQI_PUBLIC_KEY = config('CULQI_PUBLIC_KEY', default='')
 CULQI_SECRET_KEY = config('CULQI_SECRET_KEY', default='')
+# Secret compartido para verificar firma de webhooks de Culqi.
+# Debe coincidir con el configurado en el panel de Culqi.
+CULQI_WEBHOOK_SECRET = config('CULQI_WEBHOOK_SECRET', default='')
 
 # Subscription Configuration
 # Permitir activación manual de suscripciones (sin pago real)

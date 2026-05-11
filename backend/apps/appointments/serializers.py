@@ -10,6 +10,7 @@ from .models import Appointment, AppointmentReminder
 from apps.services.models import Service, StaffService
 from apps.accounts.models import StaffMember, Client, BookingSession
 from apps.core.models import Branch
+from apps.scheduling.models import SpecialDate
 from apps.subscriptions.models import StaffSubscription
 
 
@@ -108,6 +109,17 @@ class PublicBookingStartSerializer(serializers.Serializer):
         end_datetime = start_datetime + timedelta(minutes=service.total_duration)
         attrs['end_datetime'] = end_datetime
 
+        # Bloquear reservas en fechas especiales cerradas (feriados, cierres)
+        special = SpecialDate.objects.filter(
+            branch_id=branch_id,
+            date=start_datetime.date(),
+            date_type__in=['closed', 'holiday'],
+        ).first()
+        if special:
+            raise serializers.ValidationError({
+                'start_datetime': f'La sucursal no atiende en esta fecha ({special.name}).'
+            })
+
         # Verificar disponibilidad
         conflicting = Appointment.objects.filter(
             staff=staff,
@@ -195,7 +207,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source='client.full_name', read_only=True)
     client_phone = serializers.CharField(source='client.phone_number', read_only=True)
     staff_name = serializers.CharField(source='staff.full_name', read_only=True)
-    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_name = serializers.CharField(source='service_display_name', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
     business_name = serializers.CharField(source='branch.business.name', read_only=True)
     duration_minutes = serializers.IntegerField(read_only=True)
@@ -221,7 +233,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
 class AppointmentListSerializer(serializers.ModelSerializer):
     """Serializer simplificado para listas de citas."""
     staff_name = serializers.CharField(source='staff.full_name', read_only=True)
-    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_name = serializers.CharField(source='service_display_name', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
 
     class Meta:
@@ -259,7 +271,7 @@ class PublicAppointmentConfirmationSerializer(serializers.ModelSerializer):
     """Serializer para la confirmación de reserva (respuesta al cliente)."""
     staff_name = serializers.CharField(source='staff.full_name', read_only=True)
     staff_photo = serializers.ImageField(source='staff.photo', read_only=True)
-    service_name = serializers.CharField(source='service.name', read_only=True)
+    service_name = serializers.CharField(source='service_display_name', read_only=True)
     branch_name = serializers.CharField(source='branch.name', read_only=True)
     branch_address = serializers.CharField(source='branch.address', read_only=True)
     business_name = serializers.CharField(source='branch.business.name', read_only=True)

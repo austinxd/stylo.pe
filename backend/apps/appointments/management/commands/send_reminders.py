@@ -83,7 +83,7 @@ class Command(BaseCommand):
             client = appointment.client
             phone_number = client.phone_number
             client_name = client.first_name
-            service_name = appointment.service.name
+            service_name = appointment.service_display_name
             branch_name = appointment.branch.name
 
             # Formatear fecha/hora en zona local

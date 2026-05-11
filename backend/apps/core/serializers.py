@@ -268,7 +268,7 @@ class ReviewTokenInfoSerializer(serializers.ModelSerializer):
     """
     appointment_id = serializers.IntegerField(source='appointment.id', read_only=True)
     appointment_date = serializers.DateTimeField(source='appointment.start_datetime', read_only=True)
-    service_name = serializers.CharField(source='appointment.service.name', read_only=True)
+    service_name = serializers.CharField(source='appointment.service_display_name', read_only=True)
     staff_name = serializers.SerializerMethodField()
     branch_name = serializers.CharField(source='appointment.branch.name', read_only=True)
     business_name = serializers.CharField(source='appointment.branch.business.name', read_only=True)
