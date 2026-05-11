@@ -59,6 +59,12 @@
            hover:bg-neutral-100 focus:ring-primary-900;
   }
 
+  .btn-danger {
+    @apply btn bg-error-600 text-white
+           hover:bg-error-700 focus:ring-error-600
+           shadow-soft hover:shadow-soft-lg;
+  }
+
   .btn-link {
     @apply inline-flex items-center gap-1
            text-primary-900 font-medium text-sm
@@ -233,4 +239,60 @@
 
 .animate-slide-up {
   animation: slide-up 0.3s ease-out forwards;
+}
+
+/* Barra de progreso indeterminada para loaders */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.animate-progress-indeterminate {
+  width: 25%;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.08) 50%,
+    rgba(0, 0, 0, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* === ACCESIBILIDAD === */
+@layer base {
+  /* Reducir movimiento si el usuario lo prefiere */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Focus visible: anillo coherente en todos los elementos interactivos */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary-900 ring-offset-2 ring-offset-white rounded-md;
+  }
 }

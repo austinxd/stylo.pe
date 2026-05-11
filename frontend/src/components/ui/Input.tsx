@@ -1,4 +1,4 @@
-import { forwardRef, InputHTMLAttributes, ReactNode } from 'react'
+import { forwardRef, InputHTMLAttributes, ReactNode, useId } from 'react'
 import { clsx } from 'clsx'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
@@ -8,6 +8,8 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   icon?: ReactNode
   iconPosition?: 'left' | 'right'
   size?: 'md' | 'lg'
+  /** Marca el campo como obligatorio visualmente (asterisco) */
+  required?: boolean
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
@@ -21,23 +23,36 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       size = 'md',
       className,
       id,
+      required,
       ...props
     },
     ref
   ) => {
-    const inputId = id || props.name
+    const reactId = useId()
+    const inputId = id || props.name || `input-${reactId}`
+    const errorId = error ? `${inputId}-error` : undefined
+    const helperId = helperText && !error ? `${inputId}-helper` : undefined
+    const describedBy = errorId || helperId
 
     return (
       <div className="w-full">
         {label && (
           <label htmlFor={inputId} className="label">
             {label}
+            {required && (
+              <span aria-hidden="true" className="text-error-500 ml-0.5">
+                *
+              </span>
+            )}
           </label>
         )}
 
         <div className="relative">
           {icon && iconPosition === 'left' && (
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400">
+            <div
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
+              aria-hidden="true"
+            >
               {icon}
             </div>
           )}
@@ -45,6 +60,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             id={inputId}
+            required={required}
+            aria-invalid={error ? 'true' : undefined}
+            aria-describedby={describedBy}
             className={clsx(
               error ? 'input-error' : 'input',
               size === 'lg' && 'input-lg',
@@ -56,14 +74,25 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           />
 
           {icon && iconPosition === 'right' && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">
+            <div
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none"
+              aria-hidden="true"
+            >
               {icon}
             </div>
           )}
         </div>
 
-        {error && <p className="error-text">{error}</p>}
-        {helperText && !error && <p className="helper-text">{helperText}</p>}
+        {error && (
+          <p id={errorId} role="alert" className="error-text">
+            {error}
+          </p>
+        )}
+        {helperText && !error && (
+          <p id={helperId} className="helper-text">
+            {helperText}
+          </p>
+        )}
       </div>
     )
   }
