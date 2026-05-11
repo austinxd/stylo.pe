@@ -51,6 +51,7 @@ class BranchSerializer(serializers.ModelSerializer):
             'address', 'address_reference', 'district', 'city', 'country',
             'postal_code', 'latitude', 'longitude', 'full_address',
             'phone', 'whatsapp', 'email', 'timezone',
+            'deposit_percentage', 'refund_window_hours',
             'is_active', 'is_main', 'created_at'
         ]
         read_only_fields = ['id', 'slug', 'created_at']

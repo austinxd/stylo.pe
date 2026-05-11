@@ -16,12 +16,20 @@ class Appointment(models.Model):
     Representa una cita/reserva de un cliente.
     """
     STATUS_CHOICES = [
+        ('pending_payment', 'Esperando pago'),
         ('pending', 'Pendiente'),
         ('confirmed', 'Confirmada'),
         ('in_progress', 'En progreso'),
         ('completed', 'Completada'),
         ('cancelled', 'Cancelada'),
         ('no_show', 'No asistió'),
+    ]
+
+    DEPOSIT_STATUS_CHOICES = [
+        ('not_required', 'No requerido'),
+        ('paid', 'Pagado'),
+        ('refunded', 'Reembolsado'),
+        ('failed', 'Fallido'),
     ]
 
     # Relaciones principales
@@ -88,6 +96,32 @@ class Appointment(models.Model):
         max_digits=10,
         decimal_places=2,
         help_text='Precio al momento de la reserva'
+    )
+
+    # Pago anticipado (depósito)
+    deposit_amount = models.DecimalField(
+        'Monto del depósito',
+        max_digits=10, decimal_places=2,
+        null=True, blank=True,
+        help_text='Monto cobrado al reservar (snapshot del % del precio).',
+    )
+    deposit_status = models.CharField(
+        'Estado del depósito',
+        max_length=20,
+        choices=DEPOSIT_STATUS_CHOICES,
+        default='not_required',
+    )
+    deposit_charge_id = models.CharField(
+        'ID del charge Culqi',
+        max_length=64,
+        blank=True, default='',
+        db_index=True,
+    )
+    deposit_paid_at = models.DateTimeField(
+        'Depósito pagado el', null=True, blank=True,
+    )
+    deposit_refunded_at = models.DateTimeField(
+        'Depósito reembolsado el', null=True, blank=True,
     )
 
     # Cancelación
@@ -158,9 +192,32 @@ class Appointment(models.Model):
         # Permitir cancelación hasta 2 horas antes
         return self.start_datetime > timezone.now() + timezone.timedelta(hours=2)
 
-    def cancel(self, cancelled_by: str, reason: str = ''):
-        """Cancela la cita y marca sus recordatorios pendientes como cancelados."""
+    def cancel(self, cancelled_by: str, reason: str = '', auto_refund: bool = True):
+        """
+        Cancela la cita.
+
+        Args:
+            cancelled_by: 'client', 'staff', 'system'
+            reason: motivo de la cancelación
+            auto_refund: si True (default), intenta reembolsar el depósito
+                         si la política de la sucursal lo permite.
+                         Marcar False cuando el caller maneja el refund
+                         de manera específica (ej: refund forzado por admin).
+
+        Flujo de reembolso:
+        - Si deposit_status != 'paid': no se intenta refund
+        - Si está dentro de Branch.refund_window_hours: refund completo
+        - Si está fuera: no refund (sirve como no-show fee)
+        """
         from django.db import transaction
+        from .deposit_service import (
+            refund_deposit,
+            is_within_refund_window,
+            DepositRefundError,
+        )
+        import logging
+
+        refund_log = logging.getLogger(__name__)
 
         with transaction.atomic():
             self.status = 'cancelled'
@@ -171,6 +228,25 @@ class Appointment(models.Model):
 
             # Cancelar recordatorios pendientes para que no se envíen
             self.reminders.filter(status='pending').update(status='cancelled')
+
+        # Refund fuera de la transacción de cancelación: Culqi es una
+        # API externa, no queremos rollback de la cancelación si falla.
+        if auto_refund and self.deposit_status == 'paid':
+            if is_within_refund_window(self):
+                try:
+                    refund_deposit(appointment=self)
+                except DepositRefundError as e:
+                    refund_log.error(
+                        'Refund automático falló appt=%s: %s. '
+                        'La cita queda cancelada pero el depósito permanece pagado.',
+                        self.pk, e,
+                    )
+            else:
+                refund_log.info(
+                    'Cita appt=%s cancelada fuera de ventana de reembolso '
+                    '(refund_window_hours=%s). Sin refund.',
+                    self.pk, self.branch.refund_window_hours,
+                )
 
 
 class AppointmentReminder(models.Model):

@@ -54,6 +54,11 @@ export interface BookingSendOTPResponse {
 export interface BookingVerifyOTPRequest {
   session_token: string
   otp_code: string
+  /**
+   * Token Culqi (tkn_xxx) cuando la sucursal requiere depósito anticipado.
+   * Obtenido vía features/booking/culqi.tokenizeCard() en el frontend.
+   */
+  card_token?: string
 }
 
 export interface AppointmentConfirmation {
@@ -76,6 +81,19 @@ export interface BookingVerifyOTPResponse {
   success: boolean
   message: string
   appointment: AppointmentConfirmation
+  deposit_charged?: boolean
+}
+
+/**
+ * 402 PAYMENT_REQUIRED response cuando la sucursal exige depósito
+ * y no se envió card_token. El frontend usa esto para abrir Culqi.js,
+ * tokenizar, y reintentar verifyOTP con el card_token.
+ */
+export interface BookingDepositRequiredError {
+  error: string
+  deposit_required: true
+  deposit_amount: string
+  deposit_percentage: number
 }
 
 export interface BookingResendOTPRequest {

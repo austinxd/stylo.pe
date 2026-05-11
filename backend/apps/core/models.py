@@ -1,6 +1,7 @@
 """
 Modelos core: Business (Negocio) y Branch (Sucursal).
 """
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils.text import slugify
 
@@ -195,6 +196,23 @@ class Branch(models.Model):
     # Estado
     is_active = models.BooleanField('Activo', default=True)
     is_main = models.BooleanField('Sucursal principal', default=False)
+
+    # Pagos anticipados (depósito al reservar)
+    # 0 = sin depósito; 100 = cobrar el precio completo
+    deposit_percentage = models.PositiveSmallIntegerField(
+        'Porcentaje de depósito',
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Porcentaje del precio cobrado al reservar (0-100). 0 = sin depósito.',
+    )
+    # Horas antes de la cita en las que se permite cancelar con reembolso completo.
+    # Si cliente cancela dentro de este margen, el depósito se reembolsa.
+    # Si cancela después, no se reembolsa (sirve de no-show fee).
+    refund_window_hours = models.PositiveSmallIntegerField(
+        'Horas antes para reembolso',
+        default=24,
+        help_text='Si el cliente cancela con esta antelación, se reembolsa el depósito.',
+    )
 
     # Fechas
     created_at = models.DateTimeField('Creado', auto_now_add=True)

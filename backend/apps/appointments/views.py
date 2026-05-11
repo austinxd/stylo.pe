@@ -344,7 +344,33 @@ class PublicBookingViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Crear la cita con lock atómico (evita double-booking)
+        # Verificar si la sucursal requiere depósito (pago anticipado)
+        from .deposit_service import (
+            calculate_deposit,
+            charge_deposit,
+            requires_deposit,
+            DepositChargeError,
+        )
+
+        branch_obj = Branch.objects.get(pk=session.branch_id)
+        needs_deposit = requires_deposit(branch_obj)
+        deposit_amount = calculate_deposit(branch_obj, price) if needs_deposit else None
+
+        card_token = request.data.get('card_token', '').strip()
+        if needs_deposit and not card_token:
+            return Response(
+                {
+                    'error': 'Esta sucursal requiere un depósito al reservar.',
+                    'deposit_required': True,
+                    'deposit_amount': str(deposit_amount),
+                    'deposit_percentage': branch_obj.deposit_percentage,
+                },
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
+        # Crear la cita con lock atómico (evita double-booking).
+        # Si requiere depósito, se crea en 'pending_payment' y luego cobramos.
+        initial_status = 'pending_payment' if needs_deposit else 'confirmed'
         try:
             appointment = create_appointment_atomic(
                 branch_id=session.branch_id,
@@ -354,8 +380,9 @@ class PublicBookingViewSet(viewsets.ViewSet):
                 start_datetime=session.start_datetime,
                 price=price,
                 notes=session.notes,
-                status='confirmed',
-                create_reminder=True,
+                status=initial_status,
+                # No crear recordatorio aún si la cita no está confirmada
+                create_reminder=not needs_deposit,
             )
         except AppointmentConflictError as e:
             return Response(
@@ -363,18 +390,55 @@ class PublicBookingViewSet(viewsets.ViewSet):
                 status=status.HTTP_409_CONFLICT
             )
 
+        # Si hay depósito, snapshot el monto y cobrar
+        if needs_deposit:
+            appointment.deposit_amount = deposit_amount
+            appointment.deposit_status = 'not_required'  # se actualiza en charge_deposit
+            appointment.save(update_fields=['deposit_amount', 'deposit_status', 'updated_at'])
+
+            try:
+                appointment = charge_deposit(
+                    appointment=appointment,
+                    card_token=card_token,
+                    customer_email=client.email or f'cliente+{client.pk}@stylo.pe',
+                )
+            except DepositChargeError as e:
+                # El cobro falló. Marcar cita como cancelada por sistema y
+                # devolver error para que el cliente reintente con otra tarjeta.
+                appointment.status = 'cancelled'
+                appointment.cancelled_at = timezone.now()
+                appointment.cancelled_by = 'system'
+                appointment.cancellation_reason = f'Pago rechazado: {e}'
+                appointment.save()
+                return Response(
+                    {
+                        'error': str(e),
+                        'culqi_code': e.culqi_code,
+                        'deposit_failed': True,
+                    },
+                    status=status.HTTP_402_PAYMENT_REQUIRED,
+                )
+
+            # Crear recordatorio ahora que sí está confirmada
+            reminder_time = appointment.start_datetime - timedelta(hours=24)
+            if reminder_time > timezone.now():
+                AppointmentReminder.objects.create(
+                    appointment=appointment,
+                    reminder_type='whatsapp',
+                    scheduled_at=reminder_time,
+                )
+
         # Actualizar sesión
         session.status = 'COMPLETED'
         session.verified_at = timezone.now()
         session.appointment_id = appointment.id
         session.save()
 
-        # TODO: Enviar confirmación por WhatsApp (Celery task)
-
         return Response({
             'success': True,
             'message': '¡Reserva confirmada!',
-            'appointment': PublicAppointmentConfirmationSerializer(appointment).data
+            'appointment': PublicAppointmentConfirmationSerializer(appointment).data,
+            'deposit_charged': bool(needs_deposit),
         }, status=status.HTTP_201_CREATED)
 
     @action(
