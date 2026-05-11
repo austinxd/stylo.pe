@@ -17,6 +17,12 @@ from apps.appointments.models import Appointment
 from apps.scheduling.models import WorkSchedule, BlockedTime
 from apps.subscriptions.models import StaffSubscription
 from common.permissions import IsBusinessOwner, IsBranchManager
+from common.scoping import (
+    scope_branches,
+    scope_staff,
+    scope_services,
+    scope_appointments,
+)
 from .serializers import (
     DashboardBranchSerializer,
     DashboardStaffSerializer,
@@ -227,228 +233,18 @@ class DashboardStatsView(APIView):
     """
     GET /dashboard/stats/?month=2025-12
     Estadísticas mensuales con métricas de eficiencia.
+
+    La lógica de cálculo vive en apps.dashboard.services para que sea
+    testeable y reutilizable.
     """
     permission_classes = [IsBusinessOwner | IsBranchManager]
 
     def get(self, request):
-        from datetime import datetime, time
-        from calendar import monthrange
-        from django.db.models import Avg, F
-        from django.db.models.functions import TruncDate
+        from .services import compute_monthly_stats, parse_month_param
 
-        user = request.user
-
-        # Obtener mes del parámetro o usar mes actual
-        month_param = request.query_params.get('month')
-        if month_param:
-            try:
-                year, month = map(int, month_param.split('-'))
-            except ValueError:
-                year = timezone.now().year
-                month = timezone.now().month
-        else:
-            year = timezone.now().year
-            month = timezone.now().month
-
-        # Calcular rango del mes
-        first_day = timezone.make_aware(datetime(year, month, 1, 0, 0, 0))
-        last_day_num = monthrange(year, month)[1]
-        last_day = timezone.make_aware(datetime(year, month, last_day_num, 23, 59, 59))
-
-        # Mes anterior para comparación
-        if month == 1:
-            prev_year, prev_month = year - 1, 12
-        else:
-            prev_year, prev_month = year, month - 1
-        prev_first_day = timezone.make_aware(datetime(prev_year, prev_month, 1, 0, 0, 0))
-        prev_last_day_num = monthrange(prev_year, prev_month)[1]
-        prev_last_day = timezone.make_aware(datetime(prev_year, prev_month, prev_last_day_num, 23, 59, 59))
-
-        # Obtener sucursales del usuario
-        if user.role == 'super_admin':
-            branches = Branch.objects.all()
-        elif user.role == 'business_owner':
-            branches = Branch.objects.filter(business__in=user.owned_businesses.all())
-        else:
-            branches = user.managed_branches.all()
-
-        branch_ids = list(branches.values_list('id', flat=True))
-
-        # === MÉTRICAS DEL MES ACTUAL ===
-        appointments_qs = Appointment.objects.filter(
-            branch_id__in=branch_ids,
-            start_datetime__gte=first_day,
-            start_datetime__lte=last_day
-        )
-
-        # Total de citas programadas
-        total_appointments = appointments_qs.count()
-
-        # Citas completadas
-        completed = appointments_qs.filter(status='completed').count()
-
-        # Citas canceladas
-        cancelled = appointments_qs.filter(status='cancelled').count()
-
-        # No shows
-        no_shows = appointments_qs.filter(status='no_show').count()
-
-        # Ingresos del mes (completadas)
-        revenue = appointments_qs.filter(
-            status='completed'
-        ).aggregate(total=Sum('price'))['total'] or 0
-
-        # Ingresos esperados (confirmadas + en progreso)
-        expected_revenue = appointments_qs.filter(
-            status__in=['confirmed', 'in_progress', 'completed']
-        ).aggregate(total=Sum('price'))['total'] or 0
-
-        # Ticket promedio
-        avg_ticket = appointments_qs.filter(
-            status='completed'
-        ).aggregate(avg=Avg('price'))['avg'] or 0
-
-        # Clientes nuevos del mes
-        new_clients = Client.objects.filter(
-            created_at__gte=first_day,
-            created_at__lte=last_day
-        ).count()
-
-        # === MÉTRICAS DEL MES ANTERIOR (para comparación) ===
-        prev_appointments_qs = Appointment.objects.filter(
-            branch_id__in=branch_ids,
-            start_datetime__gte=prev_first_day,
-            start_datetime__lte=prev_last_day
-        )
-        prev_total = prev_appointments_qs.count()
-        prev_completed = prev_appointments_qs.filter(status='completed').count()
-        prev_revenue = prev_appointments_qs.filter(
-            status='completed'
-        ).aggregate(total=Sum('price'))['total'] or 0
-
-        # === TASAS Y PORCENTAJES ===
-        # Tasa de completitud
-        completion_rate = (completed / total_appointments * 100) if total_appointments > 0 else 0
-
-        # Tasa de cancelación
-        cancellation_rate = (cancelled / total_appointments * 100) if total_appointments > 0 else 0
-
-        # Tasa de no shows
-        no_show_rate = (no_shows / total_appointments * 100) if total_appointments > 0 else 0
-
-        # Cambios vs mes anterior
-        appointments_change = ((total_appointments - prev_total) / prev_total * 100) if prev_total > 0 else 0
-        revenue_change = ((float(revenue) - float(prev_revenue)) / float(prev_revenue) * 100) if prev_revenue > 0 else 0
-
-        # === DATOS DIARIOS PARA GRÁFICO ===
-        # Usar extracción manual de fecha para compatibilidad con MySQL
-        from django.db.models.functions import Cast
-        from django.db.models import DateField
-
-        daily_appointments = []
-        daily_revenue = []
-
-        # Obtener todas las citas del período y agrupar en Python
-        appointments_for_charts = appointments_qs.filter(
-            status__in=['completed', 'confirmed', 'in_progress']
-        ).values('start_datetime', 'price')
-
-        # Agrupar por fecha en Python para evitar problemas de TruncDate con MySQL
-        daily_data_dict = {}
-        for apt in appointments_for_charts:
-            if apt['start_datetime']:
-                date_key = apt['start_datetime'].date().isoformat()
-                if date_key not in daily_data_dict:
-                    daily_data_dict[date_key] = {'count': 0, 'revenue': 0}
-                daily_data_dict[date_key]['count'] += 1
-                daily_data_dict[date_key]['revenue'] += float(apt['price'] or 0)
-
-        # Convertir a listas ordenadas por fecha
-        for date_str in sorted(daily_data_dict.keys()):
-            data = daily_data_dict[date_str]
-            daily_appointments.append({
-                'date': date_str,
-                'count': data['count']
-            })
-            daily_revenue.append({
-                'date': date_str,
-                'amount': data['revenue']
-            })
-
-        # === SERVICIOS MÁS POPULARES ===
-        popular_services = appointments_qs.filter(
-            status__in=['completed', 'confirmed', 'in_progress']
-        ).values(
-            'service__id', 'service__name'
-        ).annotate(
-            count=Count('id'),
-            revenue=Sum('price')
-        ).order_by('-count')[:5]
-
-        # === PROFESIONALES MÁS OCUPADOS ===
-        staff_stats = appointments_qs.filter(
-            status__in=['completed', 'confirmed', 'in_progress']
-        ).values(
-            'staff__id', 'staff__first_name', 'staff__last_name_paterno'
-        ).annotate(
-            appointments=Count('id'),
-            revenue=Sum('price')
-        ).order_by('-appointments')[:5]
-
-        return Response({
-            'period': {
-                'year': year,
-                'month': month,
-                'month_name': first_day.strftime('%B'),
-                'start_date': first_day.date().isoformat(),
-                'end_date': last_day.date().isoformat()
-            },
-            'overview': {
-                'total_appointments': total_appointments,
-                'completed_appointments': completed,
-                'cancelled_appointments': cancelled,
-                'no_shows': no_shows,
-                'new_clients': new_clients,
-                'revenue': float(revenue),
-                'expected_revenue': float(expected_revenue),
-                'avg_ticket': round(float(avg_ticket), 2)
-            },
-            'efficiency': {
-                'completion_rate': round(completion_rate, 1),
-                'cancellation_rate': round(cancellation_rate, 1),
-                'no_show_rate': round(no_show_rate, 1)
-            },
-            'comparison': {
-                'appointments_change': round(appointments_change, 1),
-                'revenue_change': round(revenue_change, 1),
-                'prev_appointments': prev_total,
-                'prev_revenue': float(prev_revenue)
-            },
-            'charts': {
-                'daily_appointments': daily_appointments,
-                'daily_revenue': daily_revenue
-            },
-            'rankings': {
-                'popular_services': [
-                    {
-                        'id': s['service__id'],
-                        'name': s['service__name'],
-                        'count': s['count'],
-                        'revenue': float(s['revenue'] or 0)
-                    }
-                    for s in popular_services
-                ],
-                'top_staff': [
-                    {
-                        'id': s['staff__id'],
-                        'name': f"{s['staff__first_name']} {s['staff__last_name_paterno'] or ''}".strip(),
-                        'appointments': s['appointments'],
-                        'revenue': float(s['revenue'] or 0)
-                    }
-                    for s in staff_stats
-                ]
-            }
-        })
+        year, month = parse_month_param(request.query_params.get('month'))
+        stats = compute_monthly_stats(request.user, year, month)
+        return Response(stats)
 
 
 class DashboardBranchViewSet(viewsets.ModelViewSet):
@@ -459,12 +255,7 @@ class DashboardBranchViewSet(viewsets.ModelViewSet):
     serializer_class = DashboardBranchSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user.role == 'super_admin':
-            return Branch.objects.all()
-        elif user.role == 'business_owner':
-            return Branch.objects.filter(business__in=user.owned_businesses.all())
-        return user.managed_branches.all()
+        return scope_branches(Branch.objects.all(), self.request.user)
 
     def perform_create(self, serializer):
         """Asigna el business del usuario al crear una sucursal."""
@@ -814,16 +605,10 @@ class DashboardStaffViewSet(viewsets.ModelViewSet):
     permission_classes = [IsBusinessOwner | IsBranchManager]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.role == 'super_admin':
-            return StaffMember.objects.all().prefetch_related('branches')
-        elif user.role == 'business_owner':
-            return StaffMember.objects.filter(
-                branches__business__in=user.owned_businesses.all()
-            ).distinct().prefetch_related('branches')
-        return StaffMember.objects.filter(
-            branches__in=user.managed_branches.all()
-        ).distinct().prefetch_related('branches')
+        return scope_staff(
+            StaffMember.objects.all().prefetch_related('branches'),
+            self.request.user,
+        )
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -1400,21 +1185,10 @@ class DashboardServiceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsBusinessOwner | IsBranchManager]
 
     def get_queryset(self):
-        user = self.request.user
-        branch_id = self.request.query_params.get('branch_id')
-
-        if user.role == 'super_admin':
-            qs = Service.objects.all()
-        elif user.role == 'business_owner':
-            qs = Service.objects.filter(
-                branch__business__in=user.owned_businesses.all()
-            )
-        elif hasattr(user, 'managed_branches') and user.managed_branches.exists():
-            qs = Service.objects.filter(branch__in=user.managed_branches.all())
-        else:
-            qs = Service.objects.none()
+        qs = scope_services(Service.objects.all(), self.request.user)
 
         # Filtrar por sucursal si se especifica
+        branch_id = self.request.query_params.get('branch_id')
         if branch_id:
             qs = qs.filter(branch_id=branch_id)
 
@@ -1468,14 +1242,7 @@ class DashboardAppointmentViewSet(viewsets.ModelViewSet):
     serializer_class = DashboardAppointmentSerializer
 
     def get_queryset(self):
-        user = self.request.user
-        if user.role == 'super_admin':
-            return Appointment.objects.all()
-        elif user.role == 'business_owner':
-            return Appointment.objects.filter(
-                branch__business__in=user.owned_businesses.all()
-            )
-        return Appointment.objects.filter(branch__in=user.managed_branches.all())
+        return scope_appointments(Appointment.objects.all(), self.request.user)
 
     @action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):
