@@ -188,6 +188,8 @@ interface Branch {
   full_address?: string
   google_maps_url?: string
   photos?: BranchPhoto[]
+  deposit_percentage?: number
+  refund_window_hours?: number
 }
 
 interface BranchFormData {
@@ -204,6 +206,8 @@ interface BranchFormData {
   closing_time: string
   is_active: boolean
   cover_image?: File | null
+  deposit_percentage: number
+  refund_window_hours: number
 }
 
 interface DaySchedule {
@@ -265,6 +269,8 @@ export default function BranchesManagement() {
     closing_time: '19:00',
     is_active: true,
     cover_image: null,
+    deposit_percentage: 0,
+    refund_window_hours: 24,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Estados para galeria integrada en el modal
@@ -334,6 +340,8 @@ export default function BranchesManagement() {
         closing_time: branch.closing_time || '19:00',
         is_active: branch.is_active,
         cover_image: null,
+        deposit_percentage: branch.deposit_percentage ?? 0,
+        refund_window_hours: branch.refund_window_hours ?? 24,
       })
       setImagePreview(branch.cover_image || null)
       // Limpiar el ref de imagen seleccionada (no hay nueva imagen)
@@ -382,6 +390,8 @@ export default function BranchesManagement() {
         closing_time: '19:00',
         is_active: true,
         cover_image: null,
+        deposit_percentage: 0,
+        refund_window_hours: 24,
       })
       setImagePreview(null)
       setMapCoords(null)
@@ -618,6 +628,8 @@ export default function BranchesManagement() {
     // opening_time y closing_time se manejan via el endpoint de schedule (Paso 3)
     // No los enviamos aquí para evitar sobrescribir los valores
     submitData.append('is_active', String(formData.is_active))
+    submitData.append('deposit_percentage', String(formData.deposit_percentage))
+    submitData.append('refund_window_hours', String(formData.refund_window_hours))
     if (latitude) submitData.append('latitude', String(latitude))
     if (longitude) submitData.append('longitude', String(longitude))
 
@@ -1591,6 +1603,74 @@ export default function BranchesManagement() {
                       </label>
                     </div>
 
+                    {/* Pago anticipado (depósito) */}
+                    <div className="bg-accent-50 border border-accent-200 rounded-xl p-5">
+                      <h4 className="text-sm font-semibold text-accent-900 mb-1 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-accent-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                        Pago anticipado (depósito)
+                      </h4>
+                      <p className="text-xs text-accent-800 mb-4">
+                        Cobra un porcentaje del precio al reservar para reducir no-shows. Deja en 0% para no exigir depósito.
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className="label text-neutral-700">% de depósito</span>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={formData.deposit_percentage}
+                              onChange={(e) => {
+                                const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                                setFormData({ ...formData, deposit_percentage: v })
+                              }}
+                              className="input pr-8"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500 pointer-events-none">%</span>
+                          </div>
+                          <p className="helper-text">0 = sin depósito</p>
+                        </label>
+
+                        <label className="block">
+                          <span className="label text-neutral-700">Reembolso si cancela con</span>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min={0}
+                              max={168}
+                              step={1}
+                              value={formData.refund_window_hours}
+                              onChange={(e) => {
+                                const v = Math.min(168, Math.max(0, parseInt(e.target.value) || 0))
+                                setFormData({ ...formData, refund_window_hours: v })
+                              }}
+                              disabled={formData.deposit_percentage === 0}
+                              className="input pr-12 disabled:bg-neutral-100"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500 pointer-events-none">hrs</span>
+                          </div>
+                          <p className="helper-text">
+                            {formData.deposit_percentage === 0
+                              ? 'Sólo aplica si hay depósito'
+                              : 'Antelación mínima para reembolso completo'}
+                          </p>
+                        </label>
+                      </div>
+
+                      {formData.deposit_percentage > 0 && (
+                        <div className="mt-3 pt-3 border-t border-accent-200 text-xs text-accent-900">
+                          <strong>Ejemplo:</strong> servicio de S/ 100 → el cliente paga S/{' '}
+                          {(formData.deposit_percentage).toFixed(0)} al reservar. Si cancela con{' '}
+                          ≥ {formData.refund_window_hours}h de anticipación, se le reembolsa automáticamente.
+                        </div>
+                      )}
+                    </div>
+
                     {/* Resumen */}
                     <div className="bg-green-50 border border-green-200 rounded-xl p-5">
                       <h4 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
@@ -1604,6 +1684,14 @@ export default function BranchesManagement() {
                         <p><span className="font-medium text-green-900">Direccion:</span> <span className="text-green-700">{formData.address || '-'}</span></p>
                         <p><span className="font-medium text-green-900">Dias abiertos:</span> <span className="text-green-700">{branchSchedules.filter(d => d.is_open).map(d => d.day_name.slice(0, 3)).join(', ') || 'Ninguno'}</span></p>
                         <p><span className="font-medium text-green-900">Estado:</span> <span className={formData.is_active ? 'text-green-700' : 'text-orange-600'}>{formData.is_active ? 'Activa' : 'Inactiva'}</span></p>
+                        <p>
+                          <span className="font-medium text-green-900">Depósito:</span>{' '}
+                          <span className="text-green-700">
+                            {formData.deposit_percentage > 0
+                              ? `${formData.deposit_percentage}% (reembolso si cancela con ≥${formData.refund_window_hours}h)`
+                              : 'Sin depósito'}
+                          </span>
+                        </p>
                       </div>
                     </div>
                   </div>

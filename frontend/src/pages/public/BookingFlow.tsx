@@ -13,6 +13,8 @@ import {
   clearBookingState,
   loadBookingState,
   useBookingPersistence,
+  verifyOTPWithDepositFlow,
+  DepositFlowError,
   INITIAL_CLIENT_DATA,
 } from '@/features/booking'
 import {
@@ -360,16 +362,45 @@ export default function BookingFlow() {
     },
   })
 
-  // Mutation: Verificar OTP
+  // Mutation: Verificar OTP (maneja depósito automáticamente si Branch lo exige)
   const verifyOtp = useMutation({
-    mutationFn: bookingApi.verifyOTP,
+    mutationFn: (vars: { session_token: string; otp_code: string }) =>
+      verifyOTPWithDepositFlow({
+        request: vars,
+        customerEmail: clientData.email || undefined,
+        description: bookingSummary
+          ? `Depósito - ${bookingSummary.service_name} en ${bookingSummary.business_name}`
+          : undefined,
+        onDepositRequired: (info) => {
+          toast(
+            `Esta sucursal requiere ${info.deposit_percentage}% de depósito (S/ ${info.deposit_amount}).`,
+            { icon: 'ℹ️', duration: 5000 },
+          )
+        },
+      }),
     onSuccess: (data) => {
       setConfirmedAppointment(data.appointment)
       setStep('success')
       setError(null)
-      toast.success('¡Reserva confirmada!')
+      if (data.deposit_charged) {
+        toast.success('¡Reserva confirmada y depósito procesado!')
+      } else {
+        toast.success('¡Reserva confirmada!')
+      }
     },
     onError: (err: unknown) => {
+      // DepositFlowError tiene contexto sobre qué falló
+      if (err instanceof DepositFlowError) {
+        let msg = err.message
+        if (err.stage === 'tokenize') {
+          msg = err.message || 'Pago cancelado o tarjeta inválida.'
+        } else if (err.stage === 'charge-retry') {
+          msg = err.message || 'Tu tarjeta fue rechazada. Intenta con otra.'
+        }
+        setError(msg)
+        toast.error(msg)
+        return
+      }
       const msg = getApiErrorMessage(err, 'Código incorrecto')
       setError(msg)
       toast.error(msg)

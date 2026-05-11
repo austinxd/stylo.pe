@@ -25,6 +25,7 @@ class DashboardBranchSerializer(serializers.ModelSerializer):
             'id', 'name', 'slug', 'address', 'address_reference', 'district', 'city',
             'latitude', 'longitude', 'phone', 'email', 'cover_image',
             'opening_time', 'closing_time',
+            'deposit_percentage', 'refund_window_hours',
             'is_active', 'is_main', 'appointments_today', 'staff_count', 'services_count',
             'full_address', 'google_maps_url'
         ]
