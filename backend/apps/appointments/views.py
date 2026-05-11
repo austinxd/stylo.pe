@@ -15,7 +15,9 @@ from .models import Appointment, AppointmentReminder, WaitlistEntry
 from .services import (
     create_appointment_atomic,
     reschedule_appointment_atomic,
+    claim_waitlist_slot,
     AppointmentConflictError,
+    WaitlistClaimError,
 )
 from common.throttling import (
     BookingSendOTPIPThrottle,
@@ -696,3 +698,53 @@ class WaitlistViewSet(viewsets.ViewSet):
         entry.status = 'cancelled'
         entry.save(update_fields=['status', 'updated_at'])
         return Response({'success': True, 'message': 'Te quitamos de la lista de espera.'})
+
+    @action(
+        detail=False,
+        methods=['get', 'post'],
+        url_path=r'claim/(?P<token>[^/.]+)',
+    )
+    def claim(self, request, token=None):
+        """
+        Reclama un slot liberado usando el claim_token.
+
+        GET  /waitlist/claim/{token}/   Muestra info del slot (ver si está vigente)
+        POST /waitlist/claim/{token}/   Marca como reclamado y crea la cita
+                                        (el cliente confirma)
+        """
+        if request.method == 'GET':
+            entry = WaitlistEntry.objects.filter(claim_token=token).first()
+            if not entry:
+                return Response(
+                    {'error': 'Token no válido o expirado.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if entry.status != 'notified':
+                return Response(
+                    {'error': f'Esta notificación está en estado "{entry.get_status_display()}".'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not entry.claim_token_expires_at or entry.claim_token_expires_at < timezone.now():
+                return Response(
+                    {'error': 'El tiempo para reclamar este slot expiró.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response({
+                'entry': WaitlistEntrySerializer(entry).data,
+                'expires_at': entry.claim_token_expires_at.isoformat(),
+            })
+
+        # POST: claim
+        try:
+            entry = claim_waitlist_slot(token=token)
+        except WaitlistClaimError as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response({
+            'success': True,
+            'message': 'Slot reclamado. Continúa con la reserva con tus datos.',
+            'entry': WaitlistEntrySerializer(entry).data,
+        }, status=status.HTTP_200_OK)

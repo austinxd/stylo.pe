@@ -117,3 +117,42 @@ def notify_waitlist_on_cancellation(sender, instance, created, **kwargs):
     # Dejar el entry disponible para que el caller envíe WhatsApp
     if entry:
         instance._waitlist_notified_entry = entry
+        _send_waitlist_whatsapp_safely(entry)
+
+
+def _send_waitlist_whatsapp_safely(entry):
+    """
+    Envía la notificación de waitlist por WhatsApp.
+
+    Maneja todos los errores internamente: si el provider falla, sólo
+    loguea (no debe romper el flujo de cancelación). Si el envío es
+    exitoso, no actualiza nada — la entry ya está marked notified.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    try:
+        from apps.accounts.services import WhatsAppService
+        from django.conf import settings
+
+        whatsapp = WhatsAppService()
+        # Construir URL de claim: el frontend define la ruta
+        base_url = getattr(settings, 'FRONTEND_BASE_URL', 'https://stylo.pe')
+        claim_url = f"{base_url}/waitlist/claim/{entry.claim_token}"
+
+        result = whatsapp.send_waitlist_notification(
+            phone_number=entry.phone_number,
+            client_name=entry.first_name,
+            service_name=entry.service.name if entry.service else 'tu servicio',
+            branch_name=entry.branch.name if entry.branch else 'el local',
+            claim_url=claim_url,
+            expires_minutes=30,
+        )
+        if not result.get('success'):
+            log.warning(
+                'Waitlist WhatsApp falló para entry %s: %s',
+                entry.pk, result.get('error', 'unknown'),
+            )
+    except Exception as e:
+        log.exception(
+            'Error enviando WhatsApp de waitlist para entry %s: %s', entry.pk, e,
+        )

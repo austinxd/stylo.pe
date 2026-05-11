@@ -324,3 +324,29 @@ class WhatsAppService:
             f"Si necesitas reprogramar, responde a este mensaje."
         )
         return self.provider.send_reminder(phone_number, message)
+
+    def send_waitlist_notification(
+        self,
+        phone_number: str,
+        client_name: str,
+        service_name: str,
+        branch_name: str,
+        claim_url: str,
+        expires_minutes: int,
+    ) -> dict:
+        """
+        Notifica al cliente en waitlist que se liberó un slot.
+
+        No requiere plantilla específica de Meta — usa send_reminder
+        para mensaje free-form (todos los providers lo soportan). Si
+        en el futuro Meta aprueba una plantilla 'stylo_waitlist_freed',
+        se puede agregar handler dedicado al provider.
+        """
+        message = (
+            f"¡Hola {client_name}!\n\n"
+            f"Se liberó un cupo de *{service_name}* en {branch_name}.\n\n"
+            f"Reclámalo aquí (válido {expires_minutes} min):\n"
+            f"{claim_url}\n\n"
+            f"Si no respondes a tiempo, pasamos al siguiente en la lista."
+        )
+        return self.provider.send_reminder(phone_number, message)

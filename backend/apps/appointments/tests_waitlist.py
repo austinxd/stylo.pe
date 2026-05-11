@@ -19,7 +19,14 @@ from apps.core.models import Business, Branch
 from apps.services.models import Service, StaffService
 from apps.subscriptions.models import StaffSubscription
 from .models import Appointment, WaitlistEntry
-from .services import create_appointment_atomic, process_waitlist_for_appointment
+from .services import (
+    create_appointment_atomic,
+    process_waitlist_for_appointment,
+    claim_waitlist_slot,
+    expire_old_waitlist_notifications,
+    WaitlistClaimError,
+    WAITLIST_CLAIM_TTL,
+)
 
 
 def _setup_tenant():
@@ -385,3 +392,163 @@ class WaitlistNotifyOnCancellationTests(TestCase):
         # Como la cita estaba en el pasado, no debe haberse activado el waitlist
         entry = WaitlistEntry.objects.first()
         self.assertEqual(entry.status, 'waiting')
+
+
+class WaitlistClaimTests(TestCase):
+    """Tests para reclamar un slot liberado usando claim_token."""
+
+    def setUp(self):
+        self.ctx = _setup_tenant()
+        self.client_api = APIClient()
+        self.future_date = (timezone.now() + timedelta(days=2)).date()
+        self.entry = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51987654321',
+            first_name='Ana',
+            preferred_date=self.future_date,
+            status='notified',
+            claim_token='abc123_test_token',
+            claim_token_expires_at=timezone.now() + timedelta(minutes=30),
+            notified_at=timezone.now(),
+        )
+
+    def test_get_claim_shows_entry(self):
+        response = self.client_api.get(
+            f'/api/v1/appointments/waitlist/claim/{self.entry.claim_token}/'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['entry']['id'], self.entry.id)
+
+    def test_get_claim_invalid_token_returns_404(self):
+        response = self.client_api.get(
+            '/api/v1/appointments/waitlist/claim/no-existe/'
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_claim_expired_returns_400(self):
+        self.entry.claim_token_expires_at = timezone.now() - timedelta(minutes=1)
+        self.entry.save()
+        response = self.client_api.get(
+            f'/api/v1/appointments/waitlist/claim/{self.entry.claim_token}/'
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_post_claim_marks_as_claimed(self):
+        response = self.client_api.post(
+            f'/api/v1/appointments/waitlist/claim/{self.entry.claim_token}/'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.status, 'claimed')
+        self.assertIsNotNone(self.entry.claimed_at)
+
+    def test_post_claim_expired_returns_400_and_marks_expired(self):
+        self.entry.claim_token_expires_at = timezone.now() - timedelta(minutes=1)
+        self.entry.save()
+        response = self.client_api.post(
+            f'/api/v1/appointments/waitlist/claim/{self.entry.claim_token}/'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.status, 'expired')
+
+    def test_post_claim_already_claimed_returns_400(self):
+        self.entry.status = 'claimed'
+        self.entry.save()
+        response = self.client_api.post(
+            f'/api/v1/appointments/waitlist/claim/{self.entry.claim_token}/'
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_claim_function_raises_for_invalid_token(self):
+        with self.assertRaises(WaitlistClaimError):
+            claim_waitlist_slot(token='no-existe')
+
+
+class WaitlistExpirationTests(TestCase):
+    """
+    Tests del sweep que expira entries 'notified' y promueve al siguiente.
+    """
+
+    def setUp(self):
+        self.ctx = _setup_tenant()
+        self.future_date = (timezone.now() + timedelta(days=2)).date()
+
+    def test_expires_notification_past_ttl(self):
+        entry = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51987654321',
+            first_name='Ana',
+            preferred_date=self.future_date,
+            status='notified',
+            claim_token='tkn',
+            claim_token_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        expired, promoted = expire_old_waitlist_notifications()
+        self.assertEqual(expired, 1)
+        entry.refresh_from_db()
+        self.assertEqual(entry.status, 'expired')
+
+    def test_promotes_next_in_line(self):
+        # Primer entry: notificado y a punto de expirar
+        first = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51111111111',
+            first_name='Primero',
+            preferred_date=self.future_date,
+            status='notified',
+            claim_token='tkn-first',
+            claim_token_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        # Segundo: en espera
+        second = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51222222222',
+            first_name='Segundo',
+            preferred_date=self.future_date,
+            status='waiting',
+        )
+
+        expired, promoted = expire_old_waitlist_notifications()
+        self.assertEqual(expired, 1)
+        self.assertEqual(promoted, 1)
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.status, 'expired')
+        self.assertEqual(second.status, 'notified')
+        self.assertTrue(second.claim_token)
+
+    def test_doesnt_expire_vigent_notifications(self):
+        WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51987654321',
+            first_name='Vigente',
+            preferred_date=self.future_date,
+            status='notified',
+            claim_token='tkn',
+            claim_token_expires_at=timezone.now() + timedelta(minutes=15),
+        )
+        expired, promoted = expire_old_waitlist_notifications()
+        self.assertEqual(expired, 0)
+        self.assertEqual(promoted, 0)
+
+    def test_no_promotion_when_no_one_waiting(self):
+        entry = WaitlistEntry.objects.create(
+            branch=self.ctx['branch'],
+            service=self.ctx['service'],
+            phone_number='+51987654321',
+            first_name='Solo',
+            preferred_date=self.future_date,
+            status='notified',
+            claim_token='tkn',
+            claim_token_expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        expired, promoted = expire_old_waitlist_notifications()
+        self.assertEqual(expired, 1)
+        self.assertEqual(promoted, 0)

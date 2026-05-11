@@ -193,3 +193,124 @@ def process_waitlist_for_appointment(appointment) -> WaitlistEntry | None:
         return entry
 
     return None
+
+
+def claim_waitlist_slot(*, token: str, otp_verified_session=None):
+    """
+    Reclama un slot liberado usando el claim_token enviado al cliente.
+
+    El entry pasa a 'claimed'. Si el token expiró se marca 'expired' y
+    se levanta WaitlistClaimError. Si ya fue usado, sólo levanta el error.
+
+    Diseño:
+    - select_for_update sobre el entry para evitar doble-claim concurrente.
+    - El llamador debería verificar OTP del cliente antes de invocar esto;
+      el token solo prueba que la notificación le llegó, no la identidad.
+    - Las transiciones de estado se commitean independientemente del éxito
+      del claim (la marca 'expired' debe persistir aunque se levante error).
+    """
+    # Estado terminal o token inexistente: comprobaciones rápidas sin lock
+    try:
+        existing = WaitlistEntry.objects.get(claim_token=token)
+    except WaitlistEntry.DoesNotExist:
+        raise WaitlistClaimError('Token no válido.')
+
+    if existing.status != 'notified':
+        raise WaitlistClaimError(
+            f'Esta notificación ya está en estado "{existing.get_status_display()}".'
+        )
+
+    # Si está expirado, marcar 'expired' en su propia transacción para
+    # que el cambio persista incluso después de levantar el error.
+    if not existing.claim_token_expires_at or existing.claim_token_expires_at < timezone.now():
+        with transaction.atomic():
+            WaitlistEntry.objects.filter(pk=existing.pk, status='notified').update(
+                status='expired',
+                updated_at=timezone.now(),
+            )
+        raise WaitlistClaimError('El tiempo para reclamar este slot expiró.')
+
+    # Claim atómico: re-leer con select_for_update para protección concurrente
+    with transaction.atomic():
+        try:
+            entry = WaitlistEntry.objects.select_for_update().get(
+                claim_token=token, status='notified',
+            )
+        except WaitlistEntry.DoesNotExist:
+            # Otro proceso ya lo reclamó/expiró
+            raise WaitlistClaimError('Esta notificación ya fue procesada.')
+
+        entry.status = 'claimed'
+        entry.claimed_at = timezone.now()
+        entry.save(update_fields=['status', 'claimed_at', 'updated_at'])
+
+    logger.info("Waitlist entry %s claimed via token", entry.pk)
+    return entry
+
+
+def expire_old_waitlist_notifications():
+    """
+    Expira entries en estado 'notified' cuyo claim_token venció.
+
+    Para cada entry expirado, intenta promover al siguiente match
+    en la lista (re-procesando como si la cita original se acabara
+    de cancelar). Esto permite que el cupo libre vaya rotando.
+
+    Pensada para ejecutarse cada 5 min vía Celery beat.
+
+    Retorna (expired_count, promoted_count) para observability.
+    """
+    now = timezone.now()
+    expired_count = 0
+    promoted_count = 0
+
+    expired_qs = WaitlistEntry.objects.filter(
+        status='notified',
+        claim_token_expires_at__lt=now,
+    )
+
+    for entry in expired_qs:
+        entry.status = 'expired'
+        entry.save(update_fields=['status', 'updated_at'])
+        expired_count += 1
+
+        # Intentar promover al siguiente — buscamos un appointment
+        # cancelled-en-el-pasado-cercano que matchee y volver a procesar
+        # con esos datos. Más simple: directamente buscar el siguiente
+        # entry en waiting con misma combinación.
+        next_entry = (
+            WaitlistEntry.objects.filter(
+                branch_id=entry.branch_id,
+                service_id=entry.service_id,
+                preferred_date=entry.preferred_date,
+                status='waiting',
+            )
+            .filter(
+                models.Q(staff__isnull=True) | models.Q(staff_id=entry.staff_id)
+            )
+            .order_by('created_at')
+            .first()
+        )
+
+        if next_entry and (
+            entry.staff_id is None or next_entry.staff_id in (None, entry.staff_id)
+        ):
+            # Re-aplicar la notificación con los mismos límites de hora
+            next_entry.status = 'notified'
+            next_entry.claim_token = WaitlistEntry.generate_claim_token()
+            next_entry.claim_token_expires_at = now + WAITLIST_CLAIM_TTL
+            next_entry.notified_at = now
+            next_entry.save(update_fields=[
+                'status', 'claim_token', 'claim_token_expires_at',
+                'notified_at', 'updated_at',
+            ])
+            promoted_count += 1
+            logger.info(
+                "Waitlist promovido: expired=%s next=%s", entry.pk, next_entry.pk,
+            )
+
+    return expired_count, promoted_count
+
+
+class WaitlistClaimError(Exception):
+    """Se levanta cuando un claim de waitlist no se puede ejecutar."""

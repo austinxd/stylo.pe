@@ -6,3 +6,4 @@ export {
   useBookingPersistence,
 } from './useBookingPersistence'
 export { BookingProgressBar } from './BookingProgressBar'
+export { WaitlistJoinModal } from './WaitlistJoinModal'

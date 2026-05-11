@@ -205,6 +205,10 @@ CELERY_TIMEZONE = TIME_ZONE
 try:
     from celery.schedules import crontab
     CELERY_BEAT_SCHEDULE = {
+        'expire-waitlist-notifications': {
+            'task': 'apps.appointments.tasks.expire_waitlist_notifications',
+            'schedule': crontab(minute='*/5'),  # cada 5 min
+        },
         'check-expired-trials': {
             'task': 'subscriptions.check_expired_trials',
             'schedule': crontab(hour=0, minute=5),  # 00:05 AM diario
@@ -229,6 +233,9 @@ try:
 except ImportError:
     # Celery no está instalado - usar cron jobs en su lugar
     CELERY_BEAT_SCHEDULE = {}
+
+# URL del frontend (para construir enlaces en notificaciones)
+FRONTEND_BASE_URL = config('FRONTEND_BASE_URL', default='https://stylo.pe')
 
 # Culqi Configuration (Pasarela de pagos)
 CULQI_PUBLIC_KEY = config('CULQI_PUBLIC_KEY', default='')

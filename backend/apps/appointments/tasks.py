@@ -134,3 +134,21 @@ def cleanup_old_login_sessions():
 
     if deleted:
         logger.info(f"Eliminadas {deleted} sesiones de login antiguas")
+
+
+@shared_task
+def expire_waitlist_notifications():
+    """
+    Expira entries de waitlist 'notified' que no fueron reclamadas
+    dentro del TTL, y promueve al siguiente match en la lista.
+
+    Ejecutar cada 5 minutos.
+    """
+    from .services import expire_old_waitlist_notifications
+
+    expired, promoted = expire_old_waitlist_notifications()
+    if expired or promoted:
+        logger.info(
+            "Waitlist sweep: expired=%d promoted=%d", expired, promoted
+        )
+    return {'expired': expired, 'promoted': promoted}
